@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QStringList>
 #include <QVariantList>
 #include <QVector>
 
@@ -44,6 +45,10 @@ class Backend : public QObject {
     Q_PROPERTY(double volume READ volume NOTIFY playbackChanged)
     Q_PROPERTY(QString command READ command NOTIFY commandReady)
     Q_PROPERTY(QString toast READ toast NOTIFY toastChanged)
+    Q_PROPERTY(bool mixAvailable READ mixAvailable CONSTANT)
+    Q_PROPERTY(bool mixBusy READ mixBusy NOTIFY mixChanged)
+    Q_PROPERTY(QString mixStatus READ mixStatus NOTIFY mixChanged)
+    Q_PROPERTY(bool mixCanSave READ mixCanSave NOTIFY mixChanged)
 
 public:
     explicit Backend(bool preview = false, QObject *parent = nullptr);
@@ -72,6 +77,10 @@ public:
     double volume() const { return m_volume; }
     QString command() const { return m_command; }
     QString toast() const { return m_toast; }
+    bool mixAvailable() const;
+    bool mixBusy() const { return m_mixBusy; }
+    QString mixStatus() const { return m_mixStatus; }
+    bool mixCanSave() const { return !m_mixIds.isEmpty() && !m_mixSaved; }
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void wheel(int steps);
@@ -86,6 +95,9 @@ public:
     Q_INVOKABLE void openPlayer();
     Q_INVOKABLE void openSearch();
     Q_INVOKABLE void openQueue();
+    Q_INVOKABLE void openMix();
+    Q_INVOKABLE void makeMix(const QString &request);
+    Q_INVOKABLE void saveMix();
     Q_INVOKABLE void addToQueue(int index, bool playNext);
     Q_INVOKABLE void back();
     Q_INVOKABLE void setSearch(const QString &text);
@@ -102,6 +114,7 @@ signals:
     void volumeNudged();
     void commandReady();
     void toastChanged();
+    void mixChanged();
 
 private:
     struct Row {
@@ -152,6 +165,12 @@ private:
     double m_volume = 1;
     QString m_command;
     QString m_toast;
+    class Mixer *m_mixer = nullptr;
+    bool m_mixBusy = false;
+    bool m_mixSaved = false;
+    QString m_mixStatus;
+    QString m_mixName;
+    QStringList m_mixIds;
     int m_serial = 0;
     int m_activeToken = 0;
 };

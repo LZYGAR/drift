@@ -12,6 +12,8 @@ Item {
     readonly property bool nowView: backend.kind === "now"
     readonly property bool searching: backend.kind === "search"
     readonly property alias searchText: search.text
+    readonly property alias mixText: mixInput.text
+    readonly property bool mixVisible: backend.kind === "mix"
     readonly property bool searchVisible: searching
     readonly property bool hasTrack: backend.track !== ""
 
@@ -249,6 +251,16 @@ Item {
             size: 20
             hit: 40
             onClicked: backend.openSearch()
+        }
+
+        RoundButton {
+            x: 92
+            y: 12
+            visible: backend.mixAvailable
+            path: "M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"
+            size: 18
+            hit: 40
+            onClicked: backend.openMix()
         }
 
         // artwork
@@ -618,6 +630,7 @@ Item {
             width: parent.width - 16
             height: parent.height - y - (miniBar.visible ? miniBar.height + 24 : 12)
             clip: true
+            visible: backend.kind !== "mix"
             model: backend.rows
             currentIndex: backend.selected
             spacing: 2
@@ -722,10 +735,191 @@ Item {
             }
         }
 
+        // ---- Make a Mix: describe a vibe, Grok picks the songs ----
+        Item {
+            id: mixPane
+            x: 16
+            y: 64
+            width: parent.width - 32
+            height: parent.height - 64 - (miniBar.visible ? miniBar.height + 24 : 12)
+            visible: backend.kind === "mix"
+            opacity: visible ? 1 : 0
+            onVisibleChanged: if (visible) { mixInput.text = ""; mixInput.forceActiveFocus() }
+
+            Text {
+                id: mixAsk
+                width: parent.width
+                text: qsTr("What are you in the mood for?")
+                color: root.ink
+                font.family: "Inter"
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+            }
+            Rectangle {
+                id: mixBox
+                y: mixAsk.height + 12
+                width: parent.width
+                height: 48
+                radius: 16
+                color: root.glass
+                border.color: mixInput.activeFocus ? "#80fff6ee" : root.hair
+                border.width: 1
+                Text {
+                    x: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: mixInput.text.length === 0
+                    text: qsTr("Late night drive, rainy Sunday…")
+                    color: root.faint
+                    font.family: "Inter"
+                    font.pixelSize: 14
+                }
+                TextInput {
+                    id: mixInput
+                    x: 16
+                    width: parent.width - 32
+                    height: parent.height
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: root.ink
+                    font.family: "Inter"
+                    font.pixelSize: 14
+                    clip: true
+                    maximumLength: 200
+                    selectByMouse: true
+                    enabled: !backend.mixBusy
+                    onAccepted: backend.makeMix(text)
+                }
+            }
+            Flow {
+                id: chips
+                y: mixBox.y + mixBox.height + 14
+                width: parent.width
+                spacing: 8
+                Repeater {
+                    model: [qsTr("Late night drive"), qsTr("Deep focus"), qsTr("Morning run"), qsTr("Rainy Sunday"), qsTr("Road trip"), qsTr("Dinner party")]
+                    delegate: Rectangle {
+                        required property string modelData
+                        height: 34
+                        width: chipText.implicitWidth + 28
+                        radius: 17
+                        color: chipArea.containsMouse ? "#33fff6ee" : root.glass
+                        border.color: root.hair
+                        border.width: 1
+                        opacity: backend.mixBusy ? 0.45 : 1
+                        Behavior on color { ColorAnimation { duration: 140 } }
+                        Text {
+                            id: chipText
+                            anchors.centerIn: parent
+                            text: parent.modelData
+                            color: root.ink
+                            font.family: "Inter"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: chipArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: !backend.mixBusy
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { mixInput.text = parent.modelData; backend.makeMix(parent.modelData) }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                id: makeButton
+                y: chips.y + chips.height + 22
+                width: parent.width
+                height: 50
+                radius: 25
+                color: root.ink
+                opacity: backend.mixBusy || mixInput.text.trim().length === 0 ? 0.45 : 1
+                Behavior on opacity { NumberAnimation { duration: 160 } }
+                scale: makeArea.pressed ? 0.97 : 1
+                Behavior on scale { NumberAnimation { duration: 120 } }
+                Text {
+                    anchors.centerIn: parent
+                    text: backend.mixBusy ? qsTr("Working…") : qsTr("Make mix")
+                    color: "#14110c"
+                    font.family: "Inter"
+                    font.pixelSize: 15
+                    font.weight: Font.Bold
+                }
+                MouseArea {
+                    id: makeArea
+                    anchors.fill: parent
+                    enabled: !backend.mixBusy && mixInput.text.trim().length > 0
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: backend.makeMix(mixInput.text)
+                }
+            }
+            Row {
+                id: statusRow
+                y: makeButton.y + makeButton.height + 20
+                width: parent.width
+                spacing: 10
+                visible: backend.mixStatus !== ""
+                Rectangle {
+                    id: pulse
+                    y: 5
+                    width: 8
+                    height: 8
+                    radius: 4
+                    color: root.ink
+                    visible: backend.mixBusy
+                    SequentialAnimation on opacity {
+                        running: backend.mixBusy
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.25; duration: 600; easing.type: Easing.InOutQuad }
+                        NumberAnimation { to: 1; duration: 600; easing.type: Easing.InOutQuad }
+                    }
+                }
+                Text {
+                    width: parent.width - (pulse.visible ? 18 : 0)
+                    text: backend.mixStatus
+                    color: root.mute
+                    wrapMode: Text.WordWrap
+                    font.family: "Inter"
+                    font.pixelSize: 13
+                }
+            }
+            Rectangle {
+                y: statusRow.y + statusRow.height + 14
+                visible: backend.mixCanSave
+                width: 190
+                height: 38
+                radius: 19
+                color: root.glass
+                border.color: root.hair
+                border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("Save to my library")
+                    color: root.ink
+                    font.family: "Inter"
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: backend.saveMix()
+                }
+            }
+            Text {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                text: qsTr("Grok picks the songs. Only the sentence you type is sent to xAI.")
+                color: root.faint
+                wrapMode: Text.WordWrap
+                font.family: "Inter"
+                font.pixelSize: 11
+            }
+        }
+
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             y: list.y + 40
-            visible: list.count === 0
+            visible: list.count === 0 && backend.kind !== "mix"
             text: backend.status !== "" ? backend.status : qsTr("Nothing here")
             color: root.faint
             font.family: "Inter"

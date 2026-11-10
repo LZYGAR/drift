@@ -349,6 +349,61 @@
           : kind.indexOf("playlist") !== -1 ? { playlist: String(arg) }
           : { song: String(arg) };
         music.setQueue(descriptor).then(function () { return music.play(); }).then(done, fail);
+      } else if (cmd === "mix") {
+        var wanted = [];
+        try { wanted = JSON.parse(String(arg)) || []; } catch (e) {}
+        var mixStore = music.storefrontId || "us";
+        var picked = new Array(wanted.length);
+        var looked = 0;
+        var cursor = 0;
+        var lookup = function (index) {
+          var want = wanted[index] || {};
+          var term = text((want.title || "") + " " + (want.artist || ""));
+          return music.api.music("/v1/catalog/" + mixStore + "/search", { term: term, types: "songs", limit: 5 }).then(function (result) {
+            var results = (result && result.results) || (result && result.data && result.data.results) || {};
+            var data = (results.songs && results.songs.data) || [];
+            var artist = String(want.artist || "").toLowerCase();
+            var best = null;
+            data.forEach(function (item) {
+              var a = String((item.attributes && item.attributes.artistName) || "").toLowerCase();
+              if (!best && artist && (a.indexOf(artist) !== -1 || artist.indexOf(a) !== -1)) best = item;
+            });
+            picked[index] = (best || data[0] || {}).id || "";
+          }, function () { picked[index] = ""; }).then(function () {
+            looked++;
+            publish({ type: "mix", state: "progress", found: looked, total: wanted.length });
+          });
+        };
+        var worker = function () {
+          if (cursor >= wanted.length) return Promise.resolve();
+          return lookup(cursor++).then(worker);
+        };
+        var pool = [];
+        for (var w = 0; w < Math.min(4, wanted.length); w++) pool.push(worker());
+        Promise.all(pool).then(function () {
+          var ids = [];
+          picked.forEach(function (id) { if (id && ids.indexOf(id) === -1) ids.push(id); });
+          if (!ids.length) {
+            publish({ type: "mix", state: "error", message: "None of those songs were found on Apple Music." });
+            return;
+          }
+          return music.setQueue({ songs: ids }).then(function () { return music.play(); }).then(function () {
+            publish({ type: "mix", state: "done", ids: ids });
+            done();
+          });
+        }).catch(function (error) {
+          publish({ type: "mix", state: "error", message: String(error && error.message || error) });
+        });
+      } else if (cmd === "savemix") {
+        var saveReq = {};
+        try { saveReq = JSON.parse(String(arg)) || {}; } catch (e) {}
+        var body = {
+          attributes: { name: String(saveReq.name || "Click Mix"), description: "Made in Click with Grok" },
+          relationships: { tracks: { data: (saveReq.ids || []).map(function (id) { return { id: String(id), type: "songs" }; }) } }
+        };
+        music.api.music("/v1/me/library/playlists", {}, { fetchOptions: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } })
+          .then(function () { publish({ type: "mix", state: "saved" }); },
+                function (error) { publish({ type: "mix", state: "error", message: "Could not save: " + String(error && error.message || error) }); });
       } else if (cmd === "playnext" || cmd === "playlater") {
         var qkind = String(type || "");
         var qdesc = qkind.indexOf("album") !== -1 ? { album: String(arg) }

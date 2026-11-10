@@ -7,6 +7,7 @@ TEMPLATE = app
 HEADERS += \
     src/backend.h \
     src/effects.h \
+    src/mixer.h \
     src/mpris.h \
     src/theme.h \
     src/translator.h
@@ -15,6 +16,7 @@ SOURCES += \
     src/main.cpp \
     src/backend.cpp \
     src/effects.cpp \
+    src/mixer.cpp \
     src/mpris.cpp \
     src/theme.cpp \
     src/translator.cpp

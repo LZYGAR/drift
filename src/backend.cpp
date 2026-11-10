@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "mixer.h"
 
 #include <QDir>
 #include <QFile>
@@ -20,6 +21,21 @@ Backend::Backend(bool preview, QObject *parent)
         m_dataPath = QDir::homePath() + "/.local/share/click";
     m_shotPath = qEnvironmentVariable("CLICK_SHOT");
     connect(m_bridge, &Bridge::received, this, &Backend::ingest);
+
+    m_mixer = new Mixer(this);
+    connect(m_mixer, &Mixer::finished, this, [this](const QString &name, const QVariantList &songs) {
+        m_mixName = name;
+        m_mixStatus = tr("Finding %1 songs on Apple Music…").arg(songs.size());
+        emit mixChanged();
+        // The page looks each song up and queues what it finds.
+        sendCommand(QStringLiteral("mix"), QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(songs)).toJson(QJsonDocument::Compact)),
+                    name, 0);
+    });
+    connect(m_mixer, &Mixer::failed, this, [this](const QString &message) {
+        m_mixBusy = false;
+        m_mixStatus = message;
+        emit mixChanged();
+    });
 
     // The progress bar keeps moving between the page's reports.
     auto *clock = new QTimer(this);
@@ -55,6 +71,11 @@ Backend::Backend(bool preview, QObject *parent)
         m_stack = {songs};
         if (qEnvironmentVariableIsSet("CLICK_PREVIEW_NOW"))
             showNowPlaying();
+        if (qEnvironmentVariableIsSet("CLICK_PREVIEW_MIX")) {
+            m_mixStatus = tr("Finding songs… 7 of 20");
+            m_mixBusy = true;
+            openMix();
+        }
         return;
     }
     rebuildRoot();
@@ -132,6 +153,8 @@ Backend::Screen Backend::rootScreen() const {
     }
     screen.rows.append(Row{tr("Music"), {}, QStringLiteral("music"), {}, {}});
     screen.rows.append(Row{tr("Search"), {}, QStringLiteral("search"), {}, {}});
+    if (mixAvailable())
+        screen.rows.append(Row{tr("Make a Mix"), tr("Grok picks the songs"), QStringLiteral("mix"), {}, {}});
     if (!m_track.isEmpty())
         screen.rows.append(Row{tr("Now Playing"), m_track, QStringLiteral("now"), {}, {}});
     return screen;
@@ -211,6 +234,44 @@ void Backend::showToast(const QString &text) {
         m_toast.clear();
         emit toastChanged();
     });
+}
+
+bool Backend::mixAvailable() const {
+    return m_mixer && m_mixer->available();
+}
+
+void Backend::openMix() {
+    if (!m_signedIn || m_signingIn)
+        return;
+    if (!m_stack.isEmpty() && m_stack.last().kind == QStringLiteral("mix"))
+        return;
+    Screen mix;
+    mix.id = QStringLiteral("mix");
+    mix.kind = QStringLiteral("mix");
+    mix.title = tr("Make a Mix");
+    push(mix);
+}
+
+// Grok picks the songs; the page finds them on Apple Music and plays them.
+void Backend::makeMix(const QString &request) {
+    if (m_mixBusy || m_preview || request.simplified().isEmpty())
+        return;
+    m_mixBusy = true;
+    m_mixSaved = false;
+    m_mixIds.clear();
+    m_mixStatus = tr("Asking Grok…");
+    emit mixChanged();
+    m_mixer->generate(request);
+}
+
+void Backend::saveMix() {
+    if (!mixCanSave())
+        return;
+    const QJsonObject payload{{QStringLiteral("name"), m_mixName},
+                              {QStringLiteral("ids"), QJsonArray::fromStringList(m_mixIds)}};
+    sendCommand(QStringLiteral("savemix"), QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)), {}, 0);
+    m_mixStatus = tr("Saving to your library…");
+    emit mixChanged();
 }
 
 void Backend::openQueue() {
@@ -330,6 +391,10 @@ void Backend::center() {
         search.kind = QStringLiteral("search");
         search.title = tr("Search");
         push(search);
+        return;
+    }
+    if (row.action == QStringLiteral("mix")) {
+        openMix();
         return;
     }
     if (row.action == QStringLiteral("now")) {
@@ -504,6 +569,35 @@ void Backend::ingest(const QString &json) {
         m_stack.last().selected = 0;
         setStatus(rows.isEmpty() ? tr("Nothing here") : QString());
         emit screenChanged();
+        return;
+    }
+
+    if (type == QStringLiteral("mix")) {
+        const QString stateName = object.value(QStringLiteral("state")).toString();
+        if (stateName == QStringLiteral("progress")) {
+            m_mixStatus = tr("Finding songs… %1 of %2")
+                              .arg(object.value(QStringLiteral("found")).toInt())
+                              .arg(object.value(QStringLiteral("total")).toInt());
+        } else if (stateName == QStringLiteral("done")) {
+            m_mixIds.clear();
+            for (const auto &id : object.value(QStringLiteral("ids")).toArray())
+                m_mixIds.append(id.toString());
+            m_mixBusy = false;
+            m_mixStatus = tr("Playing “%1”, %2 songs").arg(m_mixName).arg(m_mixIds.size());
+            emit mixChanged();
+            showToast(tr("Mix ready"));
+            showNowPlaying();
+            return;
+        } else if (stateName == QStringLiteral("saved")) {
+            m_mixSaved = true;
+            m_mixStatus = tr("Saved “%1” to your library").arg(m_mixName);
+            showToast(tr("Saved to library"));
+        } else if (stateName == QStringLiteral("error")) {
+            m_mixBusy = false;
+            const QString message = object.value(QStringLiteral("message")).toString();
+            m_mixStatus = message.isEmpty() ? tr("Could not build the mix.") : message;
+        }
+        emit mixChanged();
         return;
     }
 

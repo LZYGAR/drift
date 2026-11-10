@@ -11,6 +11,7 @@
 
 #include "backend.h"
 #include "effects.h"
+#include "mixer.h"
 #include "mpris.h"
 #include "theme.h"
 #include "translator.h"
@@ -51,7 +52,8 @@ private slots:
         bridge(backend)->ingest(QStringLiteral(R"({"type":"state","authorized":true})"));
         QCOMPARE(backend.signingIn(), false);
         QCOMPARE(backend.signedIn(), true);
-        QCOMPARE(backend.rows().size(), 2);
+        // A third row, "Make a Mix", appears only when the Grok CLI is installed.
+        QCOMPARE(backend.rows().size(), backend.mixAvailable() ? 3 : 2);
         QCOMPARE(backend.rows().at(0).toMap().value("label").toString(), QString("Music"));
         QCOMPARE(backend.rows().at(1).toMap().value("label").toString(), QString("Search"));
     }
@@ -283,6 +285,76 @@ private slots:
         QCOMPARE(shell("pactl", {"get-default-sink"}).trimmed(), defaultBefore);
         player.kill();
         player.waitForFinished(2000);
+    }
+
+    void mixerParsesGrokRepliesEvenWhenMessy()
+    {
+        QString name;
+        QVector<QPair<QString, QString>> songs;
+        const QByteArray fenced = "Sure! Here you go:\n```json\n{\"name\": \"Night Run\", \"songs\": ["
+            "{\"title\": \"Nightcall\", \"artist\": \"Kavinsky\"},"
+            "{\"title\": \"nightcall\", \"artist\": \"KAVINSKY\"},"
+            "{\"title\": \"\", \"artist\": \"Nobody\"},"
+            "{\"title\": \"Midnight City\", \"artist\": \"M83\"}]}\n```\nEnjoy";
+        QVERIFY(Mixer::parse(fenced, name, songs));
+        QCOMPARE(name, QString("Night Run"));
+        QCOMPARE(songs.size(), 2);            // duplicate and blank-title entries dropped
+        QCOMPARE(songs.at(1).second, QString("M83"));
+        QVERIFY(!Mixer::parse("no json here", name, songs));
+        QVERIFY(!Mixer::parse("{\"name\":\"x\",\"songs\":[]}", name, songs));
+        QVERIFY(Mixer::parse("{\"songs\":[{\"title\":\"A\",\"artist\":\"B\"}]}", name, songs));
+        QCOMPARE(name, QString("Click Mix"));
+    }
+
+    void mixerKeepsTheRequestShortAndInTheQuotes()
+    {
+        const QString longText = QString(500, 'x') + "\n\n  tail";
+        QVERIFY(Mixer::cleanRequest(longText).size() <= 200);
+        QVERIFY(!Mixer::cleanRequest("  a \n b ").contains('\n'));
+        const QString prompt = Mixer::buildPrompt("late night drive", 12);
+        QVERIFY(prompt.contains("12"));
+        QVERIFY(prompt.contains("\"late night drive\""));
+        QVERIFY(prompt.contains("ONLY a JSON object"));
+    }
+
+    void mixProgressDoneAndErrorUpdateTheScreen()
+    {
+        Backend backend;
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"state","authorized":true})"));
+        backend.openMix();
+        QCOMPARE(backend.kind(), QString("mix"));
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"mix","state":"progress","found":3,"total":20})"));
+        QVERIFY(backend.mixStatus().contains("3"));
+        QVERIFY(backend.mixStatus().contains("20"));
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"mix","state":"error","message":"None of those songs were found."})"));
+        QCOMPARE(backend.mixStatus(), QString("None of those songs were found."));
+        QVERIFY(!backend.mixBusy());
+        QVERIFY(!backend.mixCanSave());
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"mix","state":"done","ids":["1","2","3"]})"));
+        QCOMPARE(backend.kind(), QString("now"));
+        QVERIFY(backend.mixCanSave());
+        backend.saveMix();
+        QVERIFY(backend.command().contains("savemix"));
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"mix","state":"saved"})"));
+        QVERIFY(!backend.mixCanSave());
+    }
+
+    // Opt-in: makes one real Grok request. CLICK_MIX_LIVE=1 bin/test
+    void mixerLiveWithGrok()
+    {
+        if (!qEnvironmentVariableIsSet("CLICK_MIX_LIVE"))
+            QSKIP("set CLICK_MIX_LIVE=1 to ask the real Grok CLI");
+        Mixer mixer;
+        QVERIFY(mixer.available());
+        QSignalSpy done(&mixer, &Mixer::finished);
+        QSignalSpy failed(&mixer, &Mixer::failed);
+        mixer.generate("late night drive", 6);
+        QTRY_VERIFY_WITH_TIMEOUT(done.count() + failed.count() == 1, 100000);
+        QCOMPARE(failed.count(), 0);
+        const QVariantList songs = done.first().at(1).toList();
+        QVERIFY(songs.size() >= 3);
+        QVERIFY(!songs.first().toMap().value("title").toString().isEmpty());
+        QVERIFY(!songs.first().toMap().value("artist").toString().isEmpty());
     }
 
     void staleLibraryRowsAreDropped()

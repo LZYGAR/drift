@@ -24,6 +24,8 @@ ApplicationWindow {
     Material.roundedScale: theme.radius
 
     property bool helpVisible: false
+    // Text fields own the keyboard on these screens, so single-letter shortcuts stand down.
+    readonly property bool typing: backend.kind === "search" || backend.kind === "mix"
     property bool faceOpened: false
     property string authHost: ""
     property bool staysOnTop: false
@@ -88,22 +90,23 @@ ApplicationWindow {
         running: !backend.preview && backend.signedIn && !win.faceOpened
         onTriggered: {
             win.faceOpened = true
-            if (backend.kind !== "search")
+            if (!win.typing)
                 backend.openPlayer()
         }
     }
 
     // While Apple's page is up, these would swallow Enter and the arrow keys.
-    Shortcut { sequence: "?"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequence: "?"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "A"; enabled: !backend.signingIn && backend.kind === "list"; context: Qt.ApplicationShortcut; onActivated: backend.addToQueue(backend.selected, false) }
     Shortcut { sequence: "N"; enabled: !backend.signingIn && backend.kind === "list"; context: Qt.ApplicationShortcut; onActivated: backend.addToQueue(backend.selected, true) }
-    Shortcut { sequence: "U"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.openQueue() }
-    Shortcut { sequence: "Q"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
-    Shortcut { sequence: "Space"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.playPause() }
+    Shortcut { sequence: "U"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.openQueue() }
+    Shortcut { sequence: "M"; enabled: !backend.signingIn && !win.typing && backend.mixAvailable; context: Qt.ApplicationShortcut; onActivated: backend.openMix() }
+    Shortcut { sequence: "Q"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
+    Shortcut { sequence: "Space"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.playPause() }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; onActivated: backend.menu() }
     Shortcut {
         sequence: "Backspace"
-        enabled: !backend.signingIn && (backend.kind !== "search" || player.searchVisible && player.searchText.length === 0)
+        enabled: !backend.signingIn && (!win.typing || player.searchVisible && player.searchText.length === 0 || player.mixVisible && player.mixText.length === 0)
         context: Qt.ApplicationShortcut
         onActivated: backend.menu()
     }
@@ -111,11 +114,11 @@ ApplicationWindow {
     Shortcut { sequence: "Enter"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: backend.center() }
     Shortcut { sequence: "Up"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: backend.wheel(-1) }
     Shortcut { sequence: "Down"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: backend.wheel(1) }
-    Shortcut { sequence: "Left"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.previousTrack() }
-    Shortcut { sequence: "Right"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.nextTrack() }
-    Shortcut { sequence: "-"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(-1) }
-    Shortcut { sequence: "="; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(1) }
-    Shortcut { sequence: "T"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: win.staysOnTop = !win.staysOnTop }
+    Shortcut { sequence: "Left"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.previousTrack() }
+    Shortcut { sequence: "Right"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nextTrack() }
+    Shortcut { sequence: "-"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(-1) }
+    Shortcut { sequence: "="; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(1) }
+    Shortcut { sequence: "T"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: win.staysOnTop = !win.staysOnTop }
 
     // The Apple page stays loaded after sign-in, shrunk away, so the song keeps playing.
     Loader {
@@ -362,6 +365,7 @@ ApplicationWindow {
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("A   add to Up Next") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("N   play next") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("U   Up Next") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("M   make a mix with Grok") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("?   shortcuts") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("T   always on top") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Q   quit") }
