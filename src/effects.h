@@ -48,7 +48,10 @@ public:
     static double trebleDb(double value);
     // Gains for the dry and wet inputs of the mixer for a 0..1 reverb amount.
     static QPair<double, double> mixGains(double reverb);
-    static QString filterChainConfig(const QString &impulsePath, double bass, double treble, double reverb);
+    // The virtual sink is named per process, so two instances never share one.
+    QString sinkName() const { return m_sinkName; }
+    static QString filterChainConfig(const QString &impulsePath, double bass, double treble, double reverb,
+                                     const QString &sinkName = QStringLiteral("click_fx"));
     static QString propsPayload(double bass, double treble, double reverb);
     static bool writeImpulseResponse(const QString &path);
     // Indexes of sink inputs that belong to this process or its children and
@@ -79,6 +82,7 @@ private:
     void save();
 
     QString m_settingsPath;
+    QString m_sinkName;
     bool m_available = false;
     bool m_enabled = false;
     bool m_ready = false;

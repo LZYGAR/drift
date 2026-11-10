@@ -8,6 +8,7 @@
 #include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <cmath>
 
 #include "backend.h"
 #include "effects.h"
@@ -236,7 +237,7 @@ private slots:
         fx.setBass(0.0);
         fx.setEnabled(true);
         QTRY_VERIFY_WITH_TIMEOUT(fx.active(), 10000);
-        QVERIFY(shell("pactl", {"list", "short", "sinks"}).contains("click_fx"));
+        QVERIFY(shell("pactl", {"list", "short", "sinks"}).contains(fx.sinkName()));
 
         // paplay uses the pulse API like Chromium does, so it reports a process id.
         // A stream that is a child of this process counts as Click's own.
@@ -249,7 +250,7 @@ private slots:
                 const QString sinks = shell("pactl", {"-f", "json", "list", "sinks"});
                 int fxIndex = -1;
                 for (const auto &v : QJsonDocument::fromJson(sinks.toUtf8()).array())
-                    if (v.toObject().value("name").toString() == "click_fx")
+                    if (v.toObject().value("name").toString() == fx.sinkName())
                         fxIndex = v.toObject().value("index").toInt();
                 for (const auto &v : QJsonDocument::fromJson(out.toUtf8()).array()) {
                     const auto o = v.toObject();
@@ -267,7 +268,7 @@ private slots:
             const QJsonArray objects = QJsonDocument::fromJson(shell("pw-dump", {}).toUtf8()).array();
             for (const auto &v : objects) {
                 const QJsonObject o = v.toObject();
-                if (o.value("info").toObject().value("props").toObject().value("node.name").toString() != "click_fx")
+                if (o.value("info").toObject().value("props").toObject().value("node.name").toString() != fx.sinkName())
                     continue;
                 for (const auto &entry : o.value("info").toObject().value("params").toObject().value("Props").toArray()) {
                     const QJsonArray params = entry.toObject().value("params").toArray();
@@ -281,7 +282,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(qAbs(bassGain() - 6.0) < 0.01, 5000);
 
         fx.setEnabled(false);
-        QTRY_VERIFY_WITH_TIMEOUT(!shell("pactl", {"list", "short", "sinks"}).contains("click_fx"), 6000);
+        QTRY_VERIFY_WITH_TIMEOUT(!shell("pactl", {"list", "short", "sinks"}).contains(fx.sinkName()), 6000);
         QCOMPARE(shell("pactl", {"get-default-sink"}).trimmed(), defaultBefore);
         player.kill();
         player.waitForFinished(2000);
@@ -392,6 +393,97 @@ private slots:
         grey.fill(QColor(128, 128, 128));
         QVERIFY(!Backend::accentFrom(grey).isValid());
         QVERIFY(!Backend::accentFrom(QImage()).isValid());
+    }
+
+    // Opt-in measurement: does bass +10 dB actually lift low frequencies and leave mids alone?
+    // Plays two quiet tones through the effects sink and records the speaker output.
+    void effectsBassBoostIsMeasurable()
+    {
+        if (!qEnvironmentVariableIsSet("CLICK_FX_LIVE"))
+            QSKIP("set CLICK_FX_LIVE=1 to measure against the real PipeWire");
+        auto shell = [](const QString &program, const QStringList &args) {
+            QProcess p;
+            p.start(program, args);
+            p.waitForFinished(8000);
+            return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+        };
+        const QString speaker = shell("pactl", {"get-default-sink"});
+        QVERIFY(!speaker.isEmpty());
+
+        QTemporaryDir dir;
+        auto makeTone = [&](int hz) {
+            const QString path = dir.filePath(QString("tone%1.wav").arg(hz));
+            QFile wav(path);
+            wav.open(QIODevice::WriteOnly);
+            QByteArray pcm;
+            for (int i = 0; i < 48000 * 3; ++i) {
+                const qint16 v = qint16(1400 * qSin(2 * M_PI * hz * i / 48000.0));
+                for (int c = 0; c < 2; ++c) {
+                    pcm.append(char(v & 0xff));
+                    pcm.append(char((v >> 8) & 0xff));
+                }
+            }
+            auto le = [](quint32 v, int n) { QByteArray b; for (int i = 0; i < n; ++i) b.append(char((v >> (8 * i)) & 0xff)); return b; };
+            wav.write("RIFF" + le(36 + pcm.size(), 4) + "WAVEfmt " + le(16, 4) + le(1, 2) + le(2, 2) + le(48000, 4)
+                      + le(48000 * 4, 4) + le(4, 2) + le(16, 2) + "data" + le(pcm.size(), 4) + pcm);
+            return path;
+        };
+        const QString low = makeTone(60);
+        const QString mid = makeTone(1000);
+
+        Effects fx(dir.filePath("fx.conf"));
+        QVERIFY(fx.available());
+        fx.setEnabled(true);
+        QTRY_VERIFY_WITH_TIMEOUT(fx.active(), 10000);
+
+        // RMS of what reaches the speakers while a tone plays into click_fx.
+        auto level = [&](const QString &tone) {
+            QProcess record;
+            record.start("parec", {"--device=" + speaker + ".monitor", "--format=s16le", "--rate=48000", "--channels=1", "--raw"});
+            record.waitForStarted();
+            QTest::qWait(300);
+            QProcess play;
+            play.start("paplay", {"--device=" + fx.sinkName(), tone});
+            play.waitForFinished(8000);
+            QTest::qWait(200);
+            record.terminate();
+            record.waitForFinished(3000);
+            const QByteArray raw = record.readAllStandardOutput();
+            const int total = raw.size() / 2;
+            // Skip the first and last 0.5 s so start-up and tail effects stay out of the measurement.
+            const int from = 24000, to = total - 24000;
+            if (to <= from)
+                return 0.0;
+            double sum = 0;
+            const qint16 *samples = reinterpret_cast<const qint16 *>(raw.constData());
+            for (int i = from; i < to; ++i)
+                sum += double(samples[i]) * samples[i];
+            return qSqrt(sum / (to - from));
+        };
+
+        auto db = [](double ratio) { return 20.0 * std::log10(ratio); };
+        fx.setBass(0.0);
+        QTest::qWait(600);
+        const double low0 = level(low);
+        const double mid0 = level(mid);
+        fx.setBass(1.0);
+        QTest::qWait(600);
+        const double low1 = level(low);
+        const double mid1 = level(mid);
+        fx.setBass(-1.0);
+        QTest::qWait(600);
+        const double lowCut = level(low);
+        qInfo("bass measurement: 60 Hz %+.1f dB at +10 dB bass, %+.1f dB at -10 dB bass; 1 kHz %+.1f dB at +10 dB bass",
+              db(low1 / low0), db(lowCut / low0), db(mid1 / mid0));
+        fx.setEnabled(false);
+
+        QVERIFY2(low0 > 50 && mid0 > 50, "recorded silence: is something else holding the speakers?");
+        const double boost = db(low1 / low0);
+        const double cut = db(lowCut / low0);
+        const double midChange = db(mid1 / mid0);
+        QVERIFY2(boost > 6.0 && boost < 11.5, qPrintable(QString("60 Hz boost was %1 dB").arg(boost)));
+        QVERIFY2(cut < -6.0 && cut > -11.5, qPrintable(QString("60 Hz cut was %1 dB").arg(cut)));
+        QVERIFY2(qAbs(midChange) < 1.5, qPrintable(QString("1 kHz moved by %1 dB").arg(midChange)));
     }
 
     void staleLibraryRowsAreDropped()

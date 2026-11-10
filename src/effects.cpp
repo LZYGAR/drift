@@ -15,7 +15,6 @@
 
 namespace {
 
-const QString kSink = QStringLiteral("click_fx");
 constexpr double kMaxShelfDb = 10.0;
 
 double clampUnit(double value, double low, double high) {
@@ -44,7 +43,8 @@ QPair<double, double> Effects::mixGains(double reverb) {
     return {1.0 - 0.35 * wet, 0.9 * wet};
 }
 
-QString Effects::filterChainConfig(const QString &impulsePath, double bass, double treble, double reverb) {
+QString Effects::filterChainConfig(const QString &impulsePath, double bass, double treble, double reverb,
+                                   const QString &sinkName) {
     const auto gains = mixGains(reverb);
     auto channel = [&](const QString &c) {
         return QStringLiteral(
@@ -86,7 +86,7 @@ QString Effects::filterChainConfig(const QString &impulsePath, double bass, doub
                "  } }\n"
                "]\n")
         .arg(channel(QStringLiteral("L")), channel(QStringLiteral("R")), links(QStringLiteral("L")),
-             links(QStringLiteral("R")), kSink);
+             links(QStringLiteral("R")), sinkName);
 }
 
 QString Effects::propsPayload(double bass, double treble, double reverb) {
@@ -182,7 +182,9 @@ QList<int> Effects::ownedStreams(const QByteArray &json, qint64 rootPid, int fxS
     return owned;
 }
 
-Effects::Effects(const QString &settingsPath, QObject *parent) : QObject(parent), m_settingsPath(settingsPath) {
+Effects::Effects(const QString &settingsPath, QObject *parent)
+    : QObject(parent), m_settingsPath(settingsPath),
+      m_sinkName(QStringLiteral("click_fx_%1").arg(QCoreApplication::applicationPid())) {
     m_available = !QStandardPaths::findExecutable(QStringLiteral("pipewire")).isEmpty()
                   && !QStandardPaths::findExecutable(QStringLiteral("pw-cli")).isEmpty()
                   && !QStandardPaths::findExecutable(QStringLiteral("pactl")).isEmpty();
@@ -319,7 +321,7 @@ void Effects::startGraph() {
     const QString confPath = dir + QStringLiteral("/click-fx.conf");
     QFile conf(confPath);
     if (!conf.open(QIODevice::WriteOnly | QIODevice::Truncate)
-        || conf.write(filterChainConfig(impulse, m_bass, m_treble, m_reverb).toUtf8()) < 0) {
+        || conf.write(filterChainConfig(impulse, m_bass, m_treble, m_reverb, m_sinkName).toUtf8()) < 0) {
         fail(QStringLiteral("could not write the effects graph"));
         return;
     }
@@ -357,7 +359,7 @@ void Effects::probe() {
                 const QJsonArray sinks = QJsonDocument::fromJson(out).array();
                 for (const auto &value : sinks) {
                     const QJsonObject sink = value.toObject();
-                    if (sink.value(QStringLiteral("name")).toString() == kSink)
+                    if (sink.value(QStringLiteral("name")).toString() == m_sinkName)
                         sinkIndex = sink.value(QStringLiteral("index")).toInt(-1);
                 }
             }
@@ -373,7 +375,7 @@ void Effects::probe() {
                         const QJsonObject object = value.toObject();
                         const QJsonObject props = object.value(QStringLiteral("info")).toObject()
                                                       .value(QStringLiteral("props")).toObject();
-                        if (props.value(QStringLiteral("node.name")).toString() == kSink)
+                        if (props.value(QStringLiteral("node.name")).toString() == m_sinkName)
                             nodeId = object.value(QStringLiteral("id")).toInt(-1);
                     }
                 }
@@ -427,7 +429,7 @@ void Effects::route() {
                 return;
             const auto ids = ownedStreams(out, QCoreApplication::applicationPid(), m_sinkIndex, &Effects::parentPid);
             for (int id : ids)
-                run(QStringLiteral("pactl"), {QStringLiteral("move-sink-input"), QString::number(id), kSink});
+                run(QStringLiteral("pactl"), {QStringLiteral("move-sink-input"), QString::number(id), m_sinkName});
         });
 }
 
