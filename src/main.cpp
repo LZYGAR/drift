@@ -1,6 +1,7 @@
 // Click — a click-wheel player for Apple Music.
 
 #include <QFile>
+#include <QDir>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
@@ -10,6 +11,7 @@
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
 #include "backend.h"
+#include "effects.h"
 #include "mpris.h"
 #include "theme.h"
 #include "translator.h"
@@ -53,6 +55,10 @@ int main(int argc, char *argv[]) {
     if (!preview)
         backend.start();
 
+    // Bass, treble and reverb live in PipeWire. Preview renders a fixture and must not touch audio.
+    QDir().mkpath(backend.dataPath());
+    Effects effects(preview ? QString() : backend.dataPath() + "/effects.conf");
+
     QQmlApplicationEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/"));
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
@@ -60,6 +66,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("backend", &backend);
+    engine.rootContext()->setContextProperty("effects", &effects);
     engine.load(QUrl("qrc:/Main.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;

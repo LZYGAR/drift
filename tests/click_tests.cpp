@@ -3,11 +3,14 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QMetaType>
+#include <QProcess>
+#include <QtMath>
 #include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QtTest>
 
 #include "backend.h"
+#include "effects.h"
 #include "mpris.h"
 #include "theme.h"
 #include "translator.h"
@@ -93,6 +96,193 @@ private slots:
         QVERIFY(backend.command().contains("\"3\""));
         QVERIFY(!backend.command().contains("\"play\""));
         QCOMPARE(backend.kind(), QString("now"));
+    }
+
+    void effectsMapSlidersToDecibelsAndClamp()
+    {
+        QCOMPARE(Effects::bassDb(0.0), 0.0);
+        QCOMPARE(Effects::bassDb(1.0), 10.0);
+        QCOMPARE(Effects::bassDb(-1.0), -10.0);
+        QCOMPARE(Effects::bassDb(5.0), 10.0);
+        QCOMPARE(Effects::trebleDb(-7.0), -10.0);
+        QCOMPARE(Effects::trebleDb(qQNaN()), -10.0); // NaN falls to the low end, never propagates
+        const auto dry = Effects::mixGains(0.0);
+        QCOMPARE(dry.first, 1.0);
+        QCOMPARE(dry.second, 0.0);
+        const auto wet = Effects::mixGains(2.0);
+        QVERIFY(wet.first > 0.5 && wet.first < 1.0);
+        QVERIFY(wet.second > 0.0 && wet.second <= 1.0);
+    }
+
+    void effectsConfigNamesBothChannelsAndTheSink()
+    {
+        const QString conf = Effects::filterChainConfig("/tmp/room.wav", 0.5, -0.5, 0.25);
+        for (const char *name : {"bassL", "bassR", "trebL", "trebR", "convL", "convR", "mixL", "mixR"})
+            QVERIFY2(conf.contains(QString("name = %1 ").arg(name)), name);
+        QVERIFY(conf.contains("bq_lowshelf"));
+        QVERIFY(conf.contains("bq_highshelf"));
+        QVERIFY(conf.contains("convolver"));
+        QVERIFY(conf.contains("node.name = \"click_fx\""));
+        QVERIFY(conf.contains("media.class = Audio/Sink"));
+        QVERIFY(conf.contains("/tmp/room.wav"));
+        QVERIFY(conf.contains("\"Gain\" = 5.000"));
+        QVERIFY(conf.contains("\"Gain\" = -5.000"));
+        const QString props = Effects::propsPayload(1.0, 0.0, 0.0);
+        QVERIFY(props.contains("\"bassL:Gain\" 10.000"));
+        QVERIFY(props.contains("\"mixR:Gain 2\" 0.000"));
+    }
+
+    void effectsImpulseResponseIsAValidWav()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("room.wav");
+        QVERIFY(Effects::writeImpulseResponse(path));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray bytes = file.readAll();
+        QCOMPARE(bytes.left(4), QByteArray("RIFF"));
+        QCOMPARE(bytes.mid(8, 4), QByteArray("WAVE"));
+        QCOMPARE(bytes.mid(36, 4), QByteArray("data"));
+        QCOMPARE(bytes.size(), 44 + 48000 * 8 / 5 * 2);
+        QVERIFY(file.size() > 100000);
+        // Fixed seed: writing twice gives the same room.
+        const QString again = dir.filePath("again.wav");
+        QVERIFY(Effects::writeImpulseResponse(again));
+        QFile second(again);
+        QVERIFY(second.open(QIODevice::ReadOnly));
+        QCOMPARE(second.readAll(), bytes);
+    }
+
+    void effectsOnlyClaimOwnStreams()
+    {
+        // pid 100 is Click, 101 its web process, 900 someone else's player.
+        const std::function<qint64(qint64)> parentOf = [](qint64 pid) -> qint64 {
+            switch (pid) {
+            case 101: return 100;
+            case 102: return 101;
+            case 100: return 50;
+            default: return 1;
+            }
+        };
+        const QByteArray json = R"([
+            {"index":10,"sink":3,"properties":{"application.process.id":"102"}},
+            {"index":11,"sink":3,"properties":{"application.process.id":"900"}},
+            {"index":12,"sink":7,"properties":{"application.process.id":"101"}},
+            {"index":13,"sink":3,"properties":{"application.name":"no pid"}}
+        ])";
+        const QList<int> mine = Effects::ownedStreams(json, 100, 7, parentOf);
+        // 10 is a grandchild of Click on another sink; 12 is already on the fx sink; 11 and 13 are not ours.
+        QCOMPARE(mine, QList<int>{10});
+        QCOMPARE(Effects::ownedStreams(json, 100, -2, parentOf), (QList<int>{10, 12}));
+    }
+
+    void effectsSettingsPersistAndStartOff()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("effects.conf");
+        {
+            Effects first(path);
+            QVERIFY(!first.enabled());
+            first.setBass(0.4);
+            first.setTreble(-2.0);
+            first.setReverb(0.3);
+            QCOMPARE(first.treble(), -1.0);
+        }
+        Effects second(path);
+        QCOMPARE(second.bass(), 0.4);
+        QCOMPARE(second.treble(), -1.0);
+        QCOMPARE(second.reverb(), 0.3);
+        QVERIFY(!second.enabled());
+        second.reset();
+        QCOMPARE(second.bass(), 0.0);
+        QCOMPARE(second.reverb(), 0.0);
+    }
+
+    // Opt-in: needs a running PipeWire. CLICK_FX_LIVE=1 bin/test
+    void effectsLiveRoutingOnThisMachine()
+    {
+        if (!qEnvironmentVariableIsSet("CLICK_FX_LIVE"))
+            QSKIP("set CLICK_FX_LIVE=1 to run against the real PipeWire");
+        auto shell = [](const QString &program, const QStringList &args) {
+            QProcess p;
+            p.start(program, args);
+            p.waitForFinished(8000);
+            return QString::fromUtf8(p.readAllStandardOutput());
+        };
+        const QString defaultBefore = shell("pactl", {"get-default-sink"}).trimmed();
+        QVERIFY(!defaultBefore.isEmpty());
+
+        QTemporaryDir dir;
+        // A quiet 4 second tone (about 4% of full scale).
+        QFile wav(dir.filePath("tone.wav"));
+        QVERIFY(wav.open(QIODevice::WriteOnly));
+        QByteArray pcm;
+        for (int i = 0; i < 48000 * 4; ++i) {
+            const qint16 v = qint16(1400 * qSin(2 * M_PI * 220 * i / 48000.0));
+            for (int c = 0; c < 2; ++c) {
+                pcm.append(char(v & 0xff));
+                pcm.append(char((v >> 8) & 0xff));
+            }
+        }
+        auto le = [](quint32 v, int n) { QByteArray b; for (int i = 0; i < n; ++i) b.append(char((v >> (8 * i)) & 0xff)); return b; };
+        wav.write("RIFF" + le(36 + pcm.size(), 4) + "WAVEfmt " + le(16, 4) + le(1, 2) + le(2, 2) + le(48000, 4)
+                  + le(48000 * 4, 4) + le(4, 2) + le(16, 2) + "data" + le(pcm.size(), 4) + pcm);
+        wav.close();
+
+        Effects fx(dir.filePath("fx.conf"));
+        QVERIFY(fx.available());
+        fx.setBass(0.0);
+        fx.setEnabled(true);
+        QTRY_VERIFY_WITH_TIMEOUT(fx.active(), 10000);
+        QVERIFY(shell("pactl", {"list", "short", "sinks"}).contains("click_fx"));
+
+        // paplay uses the pulse API like Chromium does, so it reports a process id.
+        // A stream that is a child of this process counts as Click's own.
+        QProcess player;
+        player.start("paplay", {dir.filePath("tone.wav")});
+        QVERIFY(player.waitForStarted());
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                const QString out = shell("pactl", {"-f", "json", "list", "sink-inputs"});
+                const QString sinks = shell("pactl", {"-f", "json", "list", "sinks"});
+                int fxIndex = -1;
+                for (const auto &v : QJsonDocument::fromJson(sinks.toUtf8()).array())
+                    if (v.toObject().value("name").toString() == "click_fx")
+                        fxIndex = v.toObject().value("index").toInt();
+                for (const auto &v : QJsonDocument::fromJson(out.toUtf8()).array()) {
+                    const auto o = v.toObject();
+                    if (o.value("properties").toObject().value("application.process.id").toString().toLongLong()
+                            == player.processId())
+                        return o.value("sink").toInt(-5) == fxIndex && fxIndex >= 0;
+                }
+                return false;
+            }(),
+            9000);
+
+        // Live parameter change reaches the node.
+        fx.setBass(0.6);
+        auto bassGain = [&] {
+            const QJsonArray objects = QJsonDocument::fromJson(shell("pw-dump", {}).toUtf8()).array();
+            for (const auto &v : objects) {
+                const QJsonObject o = v.toObject();
+                if (o.value("info").toObject().value("props").toObject().value("node.name").toString() != "click_fx")
+                    continue;
+                for (const auto &entry : o.value("info").toObject().value("params").toObject().value("Props").toArray()) {
+                    const QJsonArray params = entry.toObject().value("params").toArray();
+                    for (int i = 0; i + 1 < params.size(); i += 2)
+                        if (params.at(i).toString() == "bassL:Gain")
+                            return params.at(i + 1).toDouble(-99);
+                }
+            }
+            return -99.0;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(bassGain() - 6.0) < 0.01, 5000);
+
+        fx.setEnabled(false);
+        QTRY_VERIFY_WITH_TIMEOUT(!shell("pactl", {"list", "short", "sinks"}).contains("click_fx"), 6000);
+        QCOMPARE(shell("pactl", {"get-default-sink"}).trimmed(), defaultBefore);
+        player.kill();
+        player.waitForFinished(2000);
     }
 
     void staleLibraryRowsAreDropped()

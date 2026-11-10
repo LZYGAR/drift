@@ -8,6 +8,7 @@ Item {
     id: root
 
     property var window: null
+    property bool soundOpen: false
     readonly property bool nowView: backend.kind === "now"
     readonly property bool searching: backend.kind === "search"
     readonly property alias searchText: search.text
@@ -79,6 +80,89 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: button.clicked()
+        }
+    }
+
+
+    component FxSlider: Item {
+        id: fx
+        property string label: ""
+        property real value: 0
+        property real from: -1
+        property real to: 1
+        property string unit: ""
+        signal moved(real v)
+        width: parent ? parent.width : 0
+        height: 52
+        readonly property real span: to - from
+        readonly property real ratio: (value - from) / span
+        readonly property real zero: (0 - from) / span
+        Text {
+            text: fx.label
+            color: root.ink
+            font.family: "Inter"
+            font.pixelSize: 14
+            font.weight: Font.Medium
+        }
+        Text {
+            anchors.right: parent.right
+            text: fx.unit
+            color: root.mute
+            font.family: "Inter"
+            font.pixelSize: 12
+            font.features: { "tnum": 1 }
+        }
+        Rectangle {
+            id: track
+            y: 30
+            width: parent.width
+            height: 4
+            radius: 2
+            color: "#33ffffff"
+            Rectangle {
+                x: parent.width * Math.min(fx.ratio, fx.zero)
+                width: parent.width * Math.abs(fx.ratio - fx.zero)
+                height: parent.height
+                radius: 2
+                color: root.ink
+                Behavior on width { enabled: !drag.pressed; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+            }
+            // centre mark for bass and treble
+            Rectangle {
+                visible: fx.from < 0
+                x: parent.width * fx.zero - 1
+                y: -4
+                width: 2
+                height: 12
+                radius: 1
+                color: "#59ffffff"
+            }
+            Rectangle {
+                x: parent.width * fx.ratio - width / 2
+                y: (parent.height - height) / 2
+                width: 16
+                height: 16
+                radius: 8
+                color: root.ink
+                scale: drag.pressed ? 1.25 : 1
+                Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
+            }
+        }
+        MouseArea {
+            id: drag
+            y: 20
+            width: parent.width
+            height: 32
+            cursorShape: Qt.PointingHandCursor
+            function apply(mx) {
+                let r = Math.max(0, Math.min(1, mx / width))
+                let v = fx.from + r * fx.span
+                // snap to the centre so "flat" is easy to hit
+                if (fx.from < 0 && Math.abs(v) < 0.04 * fx.span) v = 0
+                fx.moved(v)
+            }
+            onPressed: function (mouse) { apply(mouse.x) }
+            onPositionChanged: function (mouse) { if (pressed) apply(mouse.x) }
         }
     }
 
@@ -386,7 +470,7 @@ Item {
             id: volume
             x: nowPane.pad + 6
             y: parent.height - 44
-            width: parent.width - (nowPane.pad + 6) * 2 - 52
+            width: parent.width - (nowPane.pad + 6) * 2 - 100
             height: 28
             Glyph {
                 y: 5
@@ -421,6 +505,15 @@ Item {
             }
         }
 
+        RoundButton {
+            x: parent.width - width - 62
+            y: parent.height - 52
+            hit: 44
+            size: 22
+            tint: effects.enabled ? root.accent : root.ink
+            path: "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 14v2h8v-2h-8zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"
+            onClicked: root.soundOpen = true
+        }
         RoundButton {
             x: parent.width - width - 14
             y: parent.height - 52
@@ -715,6 +808,138 @@ Item {
                 height: parent.height
                 cursorShape: Qt.PointingHandCursor
                 onClicked: backend.openPlayer()
+            }
+        }
+    }
+
+    // ================= SOUND =================
+    Rectangle {
+        id: scrim
+        anchors.fill: parent
+        z: 8
+        color: "#99000000"
+        opacity: root.soundOpen ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 240 } }
+        MouseArea { anchors.fill: parent; onClicked: root.soundOpen = false }
+    }
+    Rectangle {
+        id: sheet
+        z: 9
+        width: parent.width - 16
+        x: 8
+        height: 340
+        y: root.soundOpen ? parent.height - height - 8 : parent.height + 8
+        radius: 26
+        color: "#f21a1410"
+        border.color: root.hair
+        border.width: 1
+        Behavior on y { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
+        MouseArea { anchors.fill: parent }   // keep taps inside the sheet
+
+        Item {
+            id: sheetHead
+            x: 22
+            y: 18
+            width: parent.width - 44
+            height: 34
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Sound")
+                color: root.ink
+                font.family: "Inter"
+                font.pixelSize: 20
+                font.weight: Font.Bold
+            }
+            // on/off switch
+            Rectangle {
+                id: sw
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 52
+                height: 30
+                radius: 15
+                color: effects.enabled ? root.accent : "#40ffffff"
+                opacity: effects.available ? 1 : 0.4
+                Behavior on color { ColorAnimation { duration: 200 } }
+                Rectangle {
+                    y: 3
+                    x: effects.enabled ? parent.width - width - 3 : 3
+                    width: 24
+                    height: 24
+                    radius: 12
+                    color: "#fff6ee"
+                    Behavior on x { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: effects.available
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: effects.enabled = !effects.enabled
+                }
+            }
+        }
+        Text {
+            id: sheetNote
+            x: 22
+            y: sheetHead.y + sheetHead.height + 2
+            width: parent.width - 44
+            text: !effects.available ? qsTr("Needs PipeWire (pipewire, pw-cli, pactl).")
+                : effects.enabled && !effects.active ? qsTr("Starting…")
+                : effects.enabled ? qsTr("Shaping Click's audio only.")
+                : qsTr("Off. Move a slider to turn it on.")
+            color: root.faint
+            font.family: "Inter"
+            font.pixelSize: 12
+            elide: Text.ElideRight
+        }
+        Column {
+            x: 22
+            y: sheetNote.y + 30
+            width: parent.width - 44
+            spacing: 6
+            FxSlider {
+                label: qsTr("Bass")
+                value: effects.bass
+                unit: (effects.bass >= 0 ? "+" : "") + (effects.bass * 10).toFixed(1) + " dB"
+                onMoved: function (v) { effects.bass = v; if (!effects.enabled) effects.enabled = true }
+            }
+            FxSlider {
+                label: qsTr("Treble")
+                value: effects.treble
+                unit: (effects.treble >= 0 ? "+" : "") + (effects.treble * 10).toFixed(1) + " dB"
+                onMoved: function (v) { effects.treble = v; if (!effects.enabled) effects.enabled = true }
+            }
+            FxSlider {
+                label: qsTr("Reverb")
+                from: 0
+                to: 1
+                value: effects.reverb
+                unit: Math.round(effects.reverb * 100) + "%"
+                onMoved: function (v) { effects.reverb = v; if (!effects.enabled) effects.enabled = true }
+            }
+        }
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: parent.height - height - 18
+            width: 110
+            height: 36
+            radius: 18
+            color: root.glass
+            border.color: root.hair
+            border.width: 1
+            Text {
+                anchors.centerIn: parent
+                text: qsTr("Reset")
+                color: root.ink
+                font.family: "Inter"
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+            }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: effects.reset()
             }
         }
     }
