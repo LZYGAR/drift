@@ -1,11 +1,14 @@
+#include <QDBusObjectPath>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QMetaType>
 #include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QtTest>
 
 #include "backend.h"
+#include "mpris.h"
 #include "theme.h"
 #include "translator.h"
 
@@ -148,6 +151,137 @@ private slots:
         QCOMPARE(translator.language(), QString("da"));
         QCOMPARE(translator.translate("Backend", "Sign In"), QString("Log ind"));
         QCOMPARE(translator.translate("Main", "Nothing playing"), QString("Intet afspilles"));
+    }
+
+    void playbackStatusMapsPlayingPausedAndStopped()
+    {
+        QCOMPARE(MprisState::playbackStatus(true, QStringLiteral("Night Drive")), QStringLiteral("Playing"));
+        QCOMPARE(MprisState::playbackStatus(true, QString()), QStringLiteral("Playing"));
+        QCOMPARE(MprisState::playbackStatus(false, QStringLiteral("Night Drive")), QStringLiteral("Paused"));
+        QCOMPARE(MprisState::playbackStatus(false, QString()), QStringLiteral("Stopped"));
+    }
+
+    void metadataMapsSongToMprisFields()
+    {
+        const QVariantMap meta = MprisState::metadata(QStringLiteral("Night Drive"), QStringLiteral("The Midnight"),
+                                                      QStringLiteral("Endless Summer"),
+                                                      QStringLiteral("https://example.test/art.jpg"), 214.0);
+        QCOMPARE(meta.value(QStringLiteral("xesam:title")).toString(), QStringLiteral("Night Drive"));
+        QCOMPARE(meta.value(QStringLiteral("xesam:artist")).typeId(), QMetaType::QStringList);
+        QCOMPARE(meta.value(QStringLiteral("xesam:artist")).toStringList(), QStringList{QStringLiteral("The Midnight")});
+        QCOMPARE(meta.value(QStringLiteral("xesam:album")).toString(), QStringLiteral("Endless Summer"));
+        QCOMPARE(meta.value(QStringLiteral("mpris:artUrl")).toString(), QStringLiteral("https://example.test/art.jpg"));
+        QCOMPARE(meta.value(QStringLiteral("mpris:length")).typeId(), QMetaType::LongLong);
+        QCOMPARE(meta.value(QStringLiteral("mpris:length")).toLongLong(), qint64(214000000));
+        QCOMPARE(meta.value(QStringLiteral("mpris:trackid")).userType(), qMetaTypeId<QDBusObjectPath>());
+        QCOMPARE(meta.value(QStringLiteral("mpris:trackid")).value<QDBusObjectPath>().path(),
+                 MprisState::trackPath(QStringLiteral("Night Drive"), QStringLiteral("The Midnight"),
+                                       QStringLiteral("Endless Summer")));
+        QCOMPARE(MprisState::secondsToMicros(1.5), qint64(1500000));
+        QCOMPARE(MprisState::secondsToMicros(-2), qint64(0));
+    }
+
+    void emptyTrackUsesNoTrackAndOmitsLength()
+    {
+        const QVariantMap meta = MprisState::metadata(QString(), QString(), QString(), QString(), 0);
+        QCOMPARE(meta.value(QStringLiteral("mpris:trackid")).value<QDBusObjectPath>().path(),
+                 QStringLiteral("/org/mpris/MediaPlayer2/TrackList/NoTrack"));
+        QVERIFY(!meta.contains(QStringLiteral("xesam:title")));
+        QVERIFY(!meta.contains(QStringLiteral("xesam:artist")));
+        QVERIFY(!meta.contains(QStringLiteral("xesam:album")));
+        QVERIFY(!meta.contains(QStringLiteral("mpris:length")));
+        QVERIFY(!meta.contains(QStringLiteral("mpris:artUrl")));
+        QCOMPARE(MprisState::trackPath(QString(), QStringLiteral("The Midnight"), QStringLiteral("Endless Summer")),
+                 QStringLiteral("/org/mpris/MediaPlayer2/TrackList/NoTrack"));
+
+        const QString path = MprisState::trackPath(QStringLiteral("Night Drive"), QStringLiteral("The Midnight"),
+                                                   QStringLiteral("Endless Summer"));
+        QCOMPARE(path, MprisState::trackPath(QStringLiteral("Night Drive"), QStringLiteral("The Midnight"),
+                                             QStringLiteral("Endless Summer")));
+        QVERIFY(path.startsWith(QStringLiteral("/org/mpris/MediaPlayer2/Track/")));
+        QVERIFY(path != MprisState::trackPath(QStringLiteral("Sunset"), QStringLiteral("The Midnight"),
+                                              QStringLiteral("Endless Summer")));
+    }
+
+    void positionTickPublishesNothing()
+    {
+        MprisView before;
+        before.playing = true;
+        before.track = QStringLiteral("Night Drive");
+        before.artist = QStringLiteral("The Midnight");
+        before.position = 10;
+        before.duration = 214;
+        MprisView after = before;
+        after.position = 10.1;
+
+        const MprisUpdate update = MprisState::diff(before, after);
+        QVERIFY(update.properties.isEmpty());
+        QVERIFY(!update.seeked);
+        QVERIFY(!update.properties.contains(QStringLiteral("Position")));
+    }
+
+    void seekPublishesSeekedWithoutPositionProperty()
+    {
+        MprisView before;
+        before.playing = true;
+        before.track = QStringLiteral("Night Drive");
+        before.position = 10;
+        before.duration = 214;
+        MprisView after = before;
+        after.position = 0;
+
+        const MprisUpdate update = MprisState::diff(before, after);
+        QVERIFY(update.seeked);
+        QVERIFY(update.properties.isEmpty());
+
+        after.position = 12;
+        const MprisUpdate jumped = MprisState::diff(before, after);
+        QVERIFY(jumped.seeked);
+        QVERIFY(!jumped.properties.contains(QStringLiteral("Position")));
+    }
+
+    void trackChangePublishesMetadataNotSeeked()
+    {
+        MprisView before;
+        before.playing = true;
+        before.track = QStringLiteral("Night Drive");
+        before.artist = QStringLiteral("The Midnight");
+        before.album = QStringLiteral("Endless Summer");
+        before.position = 40;
+        before.duration = 214;
+        MprisView after = before;
+        after.track = QStringLiteral("Sunset");
+        after.position = 0;
+        after.duration = 180;
+
+        const MprisUpdate update = MprisState::diff(before, after);
+        QVERIFY(!update.seeked);
+        QVERIFY(!update.properties.contains(QStringLiteral("PlaybackStatus")));
+        QVERIFY(!update.properties.contains(QStringLiteral("Position")));
+        const QVariantMap meta = update.properties.value(QStringLiteral("Metadata")).toMap();
+        QCOMPARE(meta.value(QStringLiteral("xesam:title")).toString(), QStringLiteral("Sunset"));
+        QCOMPARE(meta.value(QStringLiteral("mpris:length")).toLongLong(), qint64(180000000));
+    }
+
+    void pauseAndVolumePublishTheirProperties()
+    {
+        MprisView before;
+        before.playing = true;
+        before.track = QStringLiteral("Night Drive");
+        before.volume = 1;
+        MprisView after = before;
+        after.playing = false;
+        after.volume = 0.4;
+
+        const MprisUpdate update = MprisState::diff(before, after);
+        QCOMPARE(update.properties.value(QStringLiteral("PlaybackStatus")).toString(), QStringLiteral("Paused"));
+        QCOMPARE(update.properties.value(QStringLiteral("Volume")).toDouble(), 0.4);
+        QVERIFY(!update.seeked);
+
+        after = before;
+        after.volume = 1.0001;
+        const MprisUpdate noise = MprisState::diff(before, after);
+        QVERIFY(!noise.properties.contains(QStringLiteral("Volume")));
     }
 
 private:

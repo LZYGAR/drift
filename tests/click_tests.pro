@@ -6,5 +6,5 @@ TEMPLATE = app
 INCLUDEPATH += ../src
 DEFINES += CLICK_I18N_DIR=\\\"$$PWD/../src/i18n\\\"
 
-HEADERS += ../src/backend.h ../src/theme.h ../src/translator.h
-SOURCES += click_tests.cpp ../src/backend.cpp ../src/theme.cpp ../src/translator.cpp
+HEADERS += ../src/backend.h ../src/mpris.h ../src/theme.h ../src/translator.h
+SOURCES += click_tests.cpp ../src/backend.cpp ../src/mpris.cpp ../src/theme.cpp ../src/translator.cpp
