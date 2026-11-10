@@ -39,6 +39,9 @@ ApplicationWindow {
 
     // While Apple's page is up, these would swallow Enter and the arrow keys.
     Shortcut { sequence: "?"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequence: "A"; enabled: !backend.signingIn && backend.kind === "list"; context: Qt.ApplicationShortcut; onActivated: backend.addToQueue(backend.selected, false) }
+    Shortcut { sequence: "N"; enabled: !backend.signingIn && backend.kind === "list"; context: Qt.ApplicationShortcut; onActivated: backend.addToQueue(backend.selected, true) }
+    Shortcut { sequence: "U"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.openQueue() }
     Shortcut { sequence: "Q"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
     Shortcut { sequence: "Space"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.playPause() }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; onActivated: backend.menu() }
@@ -299,6 +302,9 @@ ApplicationWindow {
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Space   play or pause") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("← →   previous or next") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("− =   volume") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("A   add to Up Next") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("N   play next") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("U   Up Next") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("?   shortcuts") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Q   quit") }
         }

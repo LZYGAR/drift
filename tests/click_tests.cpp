@@ -53,6 +53,48 @@ private slots:
         QCOMPARE(backend.rows().at(1).toMap().value("label").toString(), QString("Search"));
     }
 
+    void queueCommandsReachThePageWithoutDroppingRows()
+    {
+        Backend backend;
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"state","authorized":true})"));
+        backend.center();           // Music
+        backend.center();           // Playlists (loading)
+        const int token = commandToken(backend.command());
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"rows","token":%1,"rows":[{"label":"Night Drive","id":"i.1","type":"songs"},{"label":"Some Artist","id":"a.1","type":"library-artists"}]})").arg(token));
+        QCOMPARE(backend.rows().size(), 2);
+
+        backend.addToQueue(0, true);
+        QVERIFY(backend.command().contains("\"playnext\""));
+        QVERIFY(backend.command().contains("i.1"));
+        QCOMPARE(backend.toast(), QString("Playing next"));
+        backend.addToQueue(0, false);
+        QVERIFY(backend.command().contains("\"playlater\""));
+        QCOMPARE(backend.toast(), QString("Added to Up Next"));
+
+        // Adding to the queue must not invalidate the list already on screen.
+        QCOMPARE(backend.rows().size(), 2);
+        // Artists are not queueable.
+        const QString before = backend.command();
+        backend.addToQueue(1, false);
+        QCOMPARE(backend.command(), before);
+    }
+
+    void upNextRowsJumpWithoutResettingTheQueue()
+    {
+        Backend backend;
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"state","authorized":true})"));
+        backend.openQueue();
+        QCOMPARE(backend.title(), QString("Up Next"));
+        QVERIFY(backend.command().contains("\"upnext\""));
+        const int token = commandToken(backend.command());
+        bridge(backend)->ingest(QStringLiteral(R"({"type":"rows","token":%1,"rows":[{"label":"Sunset","id":"3","type":"queueitem"}]})").arg(token));
+        backend.center();
+        QVERIFY(backend.command().contains("\"jump\""));
+        QVERIFY(backend.command().contains("\"3\""));
+        QVERIFY(!backend.command().contains("\"play\""));
+        QCOMPARE(backend.kind(), QString("now"));
+    }
+
     void staleLibraryRowsAreDropped()
     {
         Backend backend;

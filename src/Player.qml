@@ -386,7 +386,7 @@ Item {
             id: volume
             x: nowPane.pad + 6
             y: parent.height - 44
-            width: parent.width - (nowPane.pad + 6) * 2
+            width: parent.width - (nowPane.pad + 6) * 2 - 52
             height: 28
             Glyph {
                 y: 5
@@ -419,6 +419,15 @@ Item {
                 onPressed: function (mouse) { apply(mouse.x) }
                 onPositionChanged: function (mouse) { if (pressed) apply(mouse.x) }
             }
+        }
+
+        RoundButton {
+            x: parent.width - width - 14
+            y: parent.height - 52
+            hit: 44
+            size: 22
+            path: "M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"
+            onClicked: backend.openQueue()
         }
     }
 
@@ -547,12 +556,14 @@ Item {
                 width: list.width
                 height: 54
                 readonly property bool current: index === backend.selected
+                readonly property bool queueable: modelData.action === "play"
+                HoverHandler { id: hover }
 
                 Column {
                     anchors.left: parent.left
                     anchors.leftMargin: 16
-                    anchors.right: arrow.left
-                    anchors.rightMargin: 8
+                    anchors.right: parent.right
+                    anchors.rightMargin: row.queueable ? 84 : 40
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 1
                     Text {
@@ -581,6 +592,7 @@ Item {
                     y: (parent.height - 18) / 2
                     size: 18
                     color: root.faint
+                    visible: !row.queueable
                     opacity: row.current ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 160 } }
                     path: "M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"
@@ -591,6 +603,27 @@ Item {
                     onClicked: {
                         backend.wheel(row.index - backend.selected)
                         backend.center()
+                    }
+                }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 0
+                    visible: row.queueable
+                    opacity: hover.hovered || row.current ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 140 } }
+                    RoundButton {
+                        path: "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"
+                        size: 18
+                        hit: 38
+                        onClicked: backend.addToQueue(row.index, true)
+                    }
+                    RoundButton {
+                        path: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
+                        size: 20
+                        hit: 38
+                        onClicked: backend.addToQueue(row.index, false)
                     }
                 }
             }
@@ -683,6 +716,34 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: backend.openPlayer()
             }
+        }
+    }
+
+    // brief confirmation, e.g. "Added to Up Next"
+    Rectangle {
+        id: toast
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: parent.height - 120
+        z: 10
+        height: 38
+        width: toastText.implicitWidth + 36
+        radius: height / 2
+        color: "#e6fff6ee"
+        opacity: backend.toast !== "" ? 1 : 0
+        visible: opacity > 0.01
+        scale: backend.toast !== "" ? 1 : 0.9
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+        Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+        property string last: ""
+        Connections { target: backend; function onToastChanged() { if (backend.toast !== "") toast.last = backend.toast } }
+        Text {
+            id: toastText
+            anchors.centerIn: parent
+            text: toast.last
+            color: "#14110c"
+            font.family: "Inter"
+            font.pixelSize: 13
+            font.weight: Font.DemiBold
         }
     }
 }

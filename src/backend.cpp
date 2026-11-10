@@ -188,14 +188,57 @@ void Backend::push(Screen screen) {
 
 void Backend::queue(const QString &command, const QString &arg, const QString &type) {
     m_activeToken = ++m_serial;
+    sendCommand(command, arg, type, m_activeToken);
+}
+
+void Backend::sendCommand(const QString &command, const QString &arg, const QString &type, int token) {
     // The page's installed hook runs the command and reports back through the bridge.
     m_command = QStringLiteral("window.__podExec&&window.__podExec(%1,%2,%3,%4)")
                     .arg(jsString(command), jsString(arg), jsString(type))
-                    .arg(m_activeToken);
+                    .arg(token);
     // The page script may not be installed yet. It picks this up when it loads.
     if (command == QStringLiteral("authorize"))
         m_command.prepend(QStringLiteral("window.__podWantAuth=1;"));
     emit commandReady();
+}
+
+void Backend::showToast(const QString &text) {
+    m_toast = text;
+    emit toastChanged();
+    QTimer::singleShot(1800, this, [this, text] {
+        if (m_toast != text)
+            return;
+        m_toast.clear();
+        emit toastChanged();
+    });
+}
+
+void Backend::openQueue() {
+    if (!m_signedIn || m_signingIn)
+        return;
+    if (!m_stack.isEmpty() && m_stack.last().id == QStringLiteral("queue"))
+        return;
+    Screen up;
+    up.id = QStringLiteral("queue");
+    up.kind = QStringLiteral("list");
+    up.title = tr("Up Next");
+    push(up);
+    setStatus(tr("Loading…"));
+    queue(QStringLiteral("upnext"));
+}
+
+// Songs, albums and playlists can be queued; artists and menu rows cannot.
+void Backend::addToQueue(int index, bool playNext) {
+    if (m_stack.isEmpty())
+        return;
+    const Screen &screen = m_stack.last();
+    if (index < 0 || index >= screen.rows.size())
+        return;
+    const Row &row = screen.rows.at(index);
+    if (row.action != QStringLiteral("play"))
+        return;
+    sendCommand(playNext ? QStringLiteral("playnext") : QStringLiteral("playlater"), row.id, row.type, 0);
+    showToast(playNext ? tr("Playing next") : tr("Added to Up Next"));
 }
 
 void Backend::showNowPlaying() {
@@ -311,6 +354,11 @@ void Backend::center() {
         push(list);
         setStatus(tr("Loading…"));
         queue(QStringLiteral("library"), row.id, row.type);
+        return;
+    }
+    if (row.action == QStringLiteral("jump")) {
+        sendCommand(QStringLiteral("jump"), row.id, {}, 0);
+        showNowPlaying();
         return;
     }
     if (row.action == QStringLiteral("play")) {
@@ -444,7 +492,9 @@ void Backend::ingest(const QString &json) {
                 continue;
             QString action = QStringLiteral("play");
             QString path = id;
-            if (rowType.contains(QStringLiteral("artist"))) {
+            if (rowType == QStringLiteral("queueitem")) {
+                action = QStringLiteral("jump");
+            } else if (rowType.contains(QStringLiteral("artist"))) {
                 action = QStringLiteral("open");
                 path = QStringLiteral("/v1/me/library/artists/") + id + QStringLiteral("/albums");
             }

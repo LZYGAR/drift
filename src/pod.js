@@ -349,6 +349,32 @@
           : kind.indexOf("playlist") !== -1 ? { playlist: String(arg) }
           : { song: String(arg) };
         music.setQueue(descriptor).then(function () { return music.play(); }).then(done, fail);
+      } else if (cmd === "playnext" || cmd === "playlater") {
+        var qkind = String(type || "");
+        var qdesc = qkind.indexOf("album") !== -1 ? { album: String(arg) }
+          : qkind.indexOf("playlist") !== -1 ? { playlist: String(arg) }
+          : { song: String(arg) };
+        var hasQueue = false;
+        try { hasQueue = !!music.nowPlayingItem && (music.queue.items || []).length > 0; } catch (e) {}
+        var queued = hasQueue ? (cmd === "playnext" ? music.playNext(qdesc) : music.playLater(qdesc))
+          : music.setQueue(qdesc).then(function () { return music.play(); });
+        Promise.resolve(queued).then(done, fail);
+      } else if (cmd === "upnext") {
+        var qitems = [];
+        var qpos = -1;
+        try { qitems = music.queue.items || []; qpos = Number(music.queue.position); } catch (e) {}
+        if (!isFinite(qpos)) qpos = -1;
+        var upcoming = [];
+        for (var qi = qpos + 1; qi < qitems.length; qi++) {
+          var qit = qitems[qi] || {};
+          var qattr = qit.attributes || {};
+          var qlabel = text(qit.title || qattr.name || "");
+          if (!qlabel) continue;
+          upcoming.push({ label: qlabel, detail: text(qit.artistName || qattr.artistName || ""), type: "queueitem", id: String(qi) });
+        }
+        publish({ type: "rows", token: token, rows: upcoming });
+      } else if (cmd === "jump") {
+        Promise.resolve(music.changeToMediaAtIndex(Number(arg))).then(done, fail);
       } else {
         done();
       }

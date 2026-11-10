@@ -43,6 +43,7 @@ class Backend : public QObject {
     Q_PROPERTY(QString durationLabel READ durationLabel NOTIFY playbackChanged)
     Q_PROPERTY(double volume READ volume NOTIFY playbackChanged)
     Q_PROPERTY(QString command READ command NOTIFY commandReady)
+    Q_PROPERTY(QString toast READ toast NOTIFY toastChanged)
 
 public:
     explicit Backend(bool preview = false, QObject *parent = nullptr);
@@ -70,6 +71,7 @@ public:
     QString durationLabel() const { return formatTime(m_duration); }
     double volume() const { return m_volume; }
     QString command() const { return m_command; }
+    QString toast() const { return m_toast; }
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void wheel(int steps);
@@ -83,6 +85,8 @@ public:
     Q_INVOKABLE void seek(double seconds);
     Q_INVOKABLE void openPlayer();
     Q_INVOKABLE void openSearch();
+    Q_INVOKABLE void openQueue();
+    Q_INVOKABLE void addToQueue(int index, bool playNext);
     Q_INVOKABLE void back();
     Q_INVOKABLE void setSearch(const QString &text);
     Q_INVOKABLE void cancelSignIn();
@@ -97,6 +101,7 @@ signals:
     void playbackChanged();
     void volumeNudged();
     void commandReady();
+    void toastChanged();
 
 private:
     struct Row {
@@ -119,6 +124,8 @@ private:
     void rebuildRoot();
     void push(Screen screen);
     void queue(const QString &command, const QString &arg = {}, const QString &type = {});
+    void sendCommand(const QString &command, const QString &arg, const QString &type, int token);
+    void showToast(const QString &text);
     void showNowPlaying();
     Screen musicScreen() const;
     Screen rootScreen() const;
@@ -144,6 +151,7 @@ private:
     double m_duration = 0;
     double m_volume = 1;
     QString m_command;
+    QString m_toast;
     int m_serial = 0;
     int m_activeToken = 0;
 };
