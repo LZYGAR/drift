@@ -4,7 +4,7 @@ set -eu
 ID="$1"
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 WT="$(CDPATH= cd -- "$ROOT/../click-$ID" && pwd -P)"
-exec grok --cwd "$WT" --allow "Write($WT/**)" --allow "Edit($WT/**)" --permission-mode acceptEdits --disable-web-search \
+exec grok --cwd "$WT" --allow "Write($WT/**)" --allow "Edit($WT/**)" --permission-mode dontAsk --disable-web-search \
   --allow "Bash(git status*)" --allow "Bash(git diff*)" --allow "Bash(git log*)" \
   --allow "Bash(git add*)" --allow "Bash(git commit*)" --allow "Bash(git branch*)" \
   --allow "Bash(rg*)" --allow "Bash(find*)" --allow "Bash(head*)" --allow "Bash(tail*)" --allow "Bash(wc*)" --allow "Bash(qmake6*)" --allow "Bash(pkg-config*)" --allow "Bash(pw-cli*)" --allow "Bash(pw-dump*)" --allow "Bash(pw-cat*)" --allow "Bash(pactl*)" --allow "Bash(speaker-test*)" --allow "Bash(timeout*)" --allow "Bash(man*)" --allow "Bash(pw-link*)" --allow "Bash(wpctl*)" --allow "Bash(env*)" --allow "Bash(build/*)" --allow "Bash(type*)" --allow "Bash(which*)" --allow "Bash(ls*)" --allow "Bash(pwd*)" --allow "Bash(grep*)" --allow "Bash(cat*)" \
