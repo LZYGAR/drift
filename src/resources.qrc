@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="Main.qml">Main.qml</file>
+        <file alias="pod.js">pod.js</file>
+        <file alias="authfix.js">authfix.js</file>
+        <file alias="qwebchannel.js">qwebchannel.js</file>
+        <file alias="i18n/en.json">i18n/en.json</file>
+        <file alias="i18n/da.json">i18n/da.json</file>
+    </qresource>
+    <qresource prefix="/ClickUi">
+        <file alias="qmldir">qmldir</file>
+        <file alias="Wheel.qml">Wheel.qml</file>
+    </qresource>
+</RCC>

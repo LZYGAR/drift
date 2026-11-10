@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Click
+Name[da]=Click
+Comment=Classic click-wheel player for Apple Music
+Comment[da]=Klassisk klikhjul-afspiller til Apple Music
+Exec=click
+Icon=click
+Terminal=false
+Categories=Audio;Music;Player;
+StartupWMClass=click
