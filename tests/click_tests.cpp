@@ -317,6 +317,18 @@ private slots:
         QVERIFY(prompt.contains("ONLY a JSON object"));
     }
 
+    void mixerAsksForTheFastModelOnlyWhenTold()
+    {
+        const QStringList fast = Mixer::arguments("p", true);
+        QVERIFY(fast.contains("grok-4.7-build-fast"));
+        QVERIFY(fast.contains("low"));
+        QVERIFY(fast.contains("dontAsk"));           // every tool stays denied
+        QVERIFY(fast.contains("--disable-web-search"));
+        const QStringList plain = Mixer::arguments("p", false);
+        QVERIFY(!plain.contains("-m"));
+        QCOMPARE(plain.last(), QString("p"));
+    }
+
     void mixProgressDoneAndErrorUpdateTheScreen()
     {
         Backend backend;
@@ -348,11 +360,11 @@ private slots:
         QVERIFY(mixer.available());
         QSignalSpy done(&mixer, &Mixer::finished);
         QSignalSpy failed(&mixer, &Mixer::failed);
-        mixer.generate("late night drive", 6);
-        QTRY_VERIFY_WITH_TIMEOUT(done.count() + failed.count() == 1, 100000);
+        mixer.generate("late night drive", 20);
+        QTRY_VERIFY_WITH_TIMEOUT(done.count() + failed.count() == 1, 40000);
         QCOMPARE(failed.count(), 0);
         const QVariantList songs = done.first().at(1).toList();
-        QVERIFY(songs.size() >= 3);
+        QVERIFY(songs.size() >= 12);
         QVERIFY(!songs.first().toMap().value("title").toString().isEmpty());
         QVERIFY(!songs.first().toMap().value("artist").toString().isEmpty());
     }

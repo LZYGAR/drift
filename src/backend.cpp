@@ -146,7 +146,7 @@ Backend::Screen Backend::rootScreen() const {
     Screen screen;
     screen.id = QStringLiteral("root");
     screen.kind = QStringLiteral("list");
-    screen.title = QStringLiteral("Click");
+    screen.title = tr("Music Player");
     if (!m_signedIn) {
         screen.rows.append(Row{tr("Sign In"), {}, QStringLiteral("signin"), {}, {}});
         return screen;

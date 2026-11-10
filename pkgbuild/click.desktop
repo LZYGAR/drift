@@ -1,11 +1,13 @@
 [Desktop Entry]
 Type=Application
-Name=Click
-Name[da]=Click
-Comment=Classic click-wheel player for Apple Music
-Comment[da]=Klassisk klikhjul-afspiller til Apple Music
+Name=Music Player
+Name[da]=Musikafspiller
+GenericName=Music Player
+Comment=A beautiful mini player for Apple Music
+Comment[da]=En flot minimusikafspiller til Apple Music
+Keywords=music;player;apple music;songs;playlist;audio;
 Exec=click
 Icon=click
 Terminal=false
-Categories=Audio;Music;Player;
+Categories=Audio;Music;Player;AudioVideo;
 StartupWMClass=click

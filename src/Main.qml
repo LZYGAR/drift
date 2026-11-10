@@ -15,7 +15,7 @@ ApplicationWindow {
     maximumWidth: 360
     maximumHeight: 640
     visible: true
-    title: "Click"
+    title: "Music Player"
     color: "#14110c"
     flags: Qt.Window | Qt.FramelessWindowHint | (staysOnTop ? Qt.WindowStaysOnTopHint : 0)
 
@@ -355,7 +355,7 @@ ApplicationWindow {
         Column {
             anchors.centerIn: parent
             spacing: 8
-            Text { text: "Click"; color: "white"; font.family: "Inter"; font.pixelSize: 22; font.weight: Font.Bold }
+            Text { text: "Music Player"; color: "white"; font.family: "Inter"; font.pixelSize: 22; font.weight: Font.Bold }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Scroll or ↑ ↓   move") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Click or Enter   choose") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Esc   back") }

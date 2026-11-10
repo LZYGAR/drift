@@ -38,6 +38,7 @@ int main(int argc, char *argv[]) {
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("click");
+    app.setApplicationDisplayName("Music Player");
     app.setApplicationVersion("0.1.0");
 
     // Matches the window to click.desktop, so the compositor and the launcher

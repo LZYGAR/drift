@@ -1,7 +1,7 @@
 pkgname=click
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='Classic click-wheel player for Apple Music'
+pkgdesc='A beautiful mini player for Apple Music'
 arch=('x86_64' 'aarch64')
 license=('MIT')
 depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'qt6-webchannel' 'qt6-wayland')

@@ -21,6 +21,8 @@ public:
     bool busy() const { return m_process != nullptr; }
     void setProgram(const QString &program) { m_program = program; }
     void generate(const QString &request, int count = 20);
+    // The fast model at low effort answers in about 6 s; the default takes 30 to 50.
+    static QStringList arguments(const QString &prompt, bool fast);
     void cancel();
 
     static QString buildPrompt(const QString &request, int count);
@@ -33,9 +35,12 @@ signals:
     void failed(const QString &message);
 
 private:
+    void launch(const QString &prompt, bool fast);
     void done(int code, QProcess::ExitStatus status);
 
     QString m_program = QStringLiteral("grok");
     QProcess *m_process = nullptr;
+    QString m_prompt;
+    bool m_triedFast = false;
     QTimer m_timeout;
 };

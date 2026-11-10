@@ -89,10 +89,28 @@ void Mixer::generate(const QString &request, int count) {
         emit failed(tr("Grok is not installed."));
         return;
     }
+    m_prompt = buildPrompt(text, qBound(5, count, kMaxSongs));
+    launch(m_prompt, true);
+}
+
+QStringList Mixer::arguments(const QString &prompt, bool fast) {
+    QStringList args{QStringLiteral("--permission-mode"), QStringLiteral("dontAsk"),
+                     QStringLiteral("--disable-web-search"), QStringLiteral("--no-subagents"),
+                     QStringLiteral("--max-turns"), QStringLiteral("2"),
+                     QStringLiteral("--output-format"), QStringLiteral("plain")};
+    if (fast)
+        args << QStringLiteral("-m") << QStringLiteral("grok-4.7-build-fast") << QStringLiteral("--effort")
+             << QStringLiteral("low");
+    args << QStringLiteral("-p") << prompt;
+    return args;
+}
+
+void Mixer::launch(const QString &prompt, bool fast) {
     // An empty folder, so the agent has nothing of yours to look at.
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/mix");
     QDir().mkpath(dir);
 
+    m_triedFast = fast;
     m_process = new QProcess(this);
     m_process->setWorkingDirectory(dir);
     m_process->setStandardErrorFile(QProcess::nullDevice());
@@ -105,11 +123,7 @@ void Mixer::generate(const QString &request, int count) {
         m_timeout.stop();
         emit failed(tr("Could not start Grok."));
     });
-    m_process->start(m_program, {QStringLiteral("--permission-mode"), QStringLiteral("dontAsk"),
-                                 QStringLiteral("--disable-web-search"), QStringLiteral("--no-subagents"),
-                                 QStringLiteral("--max-turns"), QStringLiteral("2"),
-                                 QStringLiteral("--output-format"), QStringLiteral("plain"),
-                                 QStringLiteral("-p"), buildPrompt(text, qBound(5, count, kMaxSongs))});
+    m_process->start(m_program, arguments(prompt, fast));
     m_timeout.start();
 }
 
@@ -135,6 +149,11 @@ void Mixer::done(int code, QProcess::ExitStatus status) {
     QString name;
     QVector<QPair<QString, QString>> songs;
     if (status != QProcess::NormalExit || code != 0 || !parse(out, name, songs)) {
+        // If the fast model was unavailable, try once more on Grok's defaults.
+        if (m_triedFast) {
+            launch(m_prompt, false);
+            return;
+        }
         emit failed(tr("Grok did not return a playlist. Try rewording."));
         return;
     }
