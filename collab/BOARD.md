@@ -16,3 +16,4 @@ UI tasks would collide. Phase 0 splits it first.
 | ui-polish | 3 | claude + grok | blocked | per-component | Animation, artwork-driven color, text elision, hi-dpi, themes; review against screenshot.png. |
 
 Rules: see LEAD.md (mine) and GROK.md (Grok's). Never two active tasks on one file.
+| effects | 2 | grok | with-grok | src/effects.*, click.pro, tests/ | Bass/treble/reverb via PipeWire filter-chain (DRM audio cannot go through Web Audio). |
