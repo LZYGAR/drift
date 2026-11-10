@@ -82,6 +82,8 @@ public:
     Q_INVOKABLE void setVolume(double value);
     Q_INVOKABLE void seek(double seconds);
     Q_INVOKABLE void openPlayer();
+    Q_INVOKABLE void openSearch();
+    Q_INVOKABLE void back();
     Q_INVOKABLE void setSearch(const QString &text);
     Q_INVOKABLE void cancelSignIn();
     Q_INVOKABLE void retranslate();

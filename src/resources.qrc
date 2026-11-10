@@ -10,5 +10,6 @@
     <qresource prefix="/ClickUi">
         <file alias="qmldir">qmldir</file>
         <file alias="Wheel.qml">Wheel.qml</file>
+        <file alias="Player.qml">Player.qml</file>
     </qresource>
 </RCC>

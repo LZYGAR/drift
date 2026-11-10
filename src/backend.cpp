@@ -386,6 +386,26 @@ void Backend::seek(double seconds) {
         queue(QStringLiteral("seek"), QString::number(m_position));
 }
 
+void Backend::openSearch() {
+    if (!m_signedIn || m_signingIn)
+        return;
+    if (!m_stack.isEmpty() && m_stack.last().kind == QStringLiteral("search"))
+        return;
+    Screen search;
+    search.id = QStringLiteral("search:");
+    search.kind = QStringLiteral("search");
+    search.title = tr("Search");
+    push(search);
+}
+
+// Back one screen; at the top of the menus, return to the song if there is one.
+void Backend::back() {
+    if (m_stack.size() > 1)
+        menu();
+    else if (!m_track.isEmpty())
+        showNowPlaying();
+}
+
 void Backend::openPlayer() {
     showNowPlaying();
 }
