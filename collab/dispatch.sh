@@ -3,7 +3,8 @@
 set -eu
 ID="$1"
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-exec grok --cwd "$ROOT/../click-$ID" --permission-mode acceptEdits --disable-web-search \
+WT="$(CDPATH= cd -- "$ROOT/../click-$ID" && pwd -P)"
+exec grok --cwd "$WT" --allow "Write($WT/**)" --allow "Edit($WT/**)" --permission-mode acceptEdits --disable-web-search \
   --allow "Bash(git status*)" --allow "Bash(git diff*)" --allow "Bash(git log*)" \
   --allow "Bash(git add*)" --allow "Bash(git commit*)" --allow "Bash(git branch*)" \
   --allow "Bash(rg*)" --allow "Bash(find*)" --allow "Bash(head*)" --allow "Bash(tail*)" --allow "Bash(wc*)" --allow "Bash(qmake6*)" --allow "Bash(pkg-config*)" --allow "Bash(ls*)" --allow "Bash(pwd*)" --allow "Bash(grep*)" --allow "Bash(cat*)" \
