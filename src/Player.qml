@@ -159,7 +159,7 @@ Item {
             font.capitalization: Font.AllUppercase
         }
         RoundButton {
-            x: parent.width - width - 12
+            x: 52
             y: 12
             path: "M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
             size: 20
@@ -454,7 +454,7 @@ Item {
         Text {
             anchors.left: back.right
             anchors.right: parent.right
-            anchors.rightMargin: 52
+            anchors.rightMargin: 84
             y: 12
             height: 40
             verticalAlignment: Text.AlignVCenter
@@ -715,6 +715,33 @@ Item {
                 height: parent.height
                 cursorShape: Qt.PointingHandCursor
                 onClicked: backend.openPlayer()
+            }
+        }
+    }
+
+    // window controls for the frameless window, above both panes
+    Row {
+        id: chrome
+        z: 11
+        anchors.right: parent.right
+        anchors.rightMargin: 10
+        y: 16
+        spacing: 2
+        RoundButton {
+            path: "M5 11h14v2H5z"
+            size: 16
+            hit: 32
+            tint: root.mute
+            onClicked: if (root.window) root.window.showMinimized()
+        }
+        RoundButton {
+            path: "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+            size: 16
+            hit: 32
+            tint: root.mute
+            onClicked: {
+                if (root.window && root.window.rememberPosition) root.window.rememberPosition()
+                Qt.quit()
             }
         }
     }

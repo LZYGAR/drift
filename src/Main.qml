@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtWebEngine
 import QtWebChannel
+import Qt.labs.settings
 import ClickUi
 
 ApplicationWindow {
@@ -16,7 +17,7 @@ ApplicationWindow {
     visible: true
     title: "Click"
     color: "#14110c"
-    flags: Qt.Window | Qt.FramelessWindowHint
+    flags: Qt.Window | Qt.FramelessWindowHint | (staysOnTop ? Qt.WindowStaysOnTopHint : 0)
 
     Material.theme: Material.Dark
     Material.accent: theme.accent
@@ -25,6 +26,61 @@ ApplicationWindow {
     property bool helpVisible: false
     property bool faceOpened: false
     property string authHost: ""
+    property bool staysOnTop: false
+    // Stays false until the saved place has been applied, so the first 0,0 does not clobber it.
+    property bool positionReady: false
+
+    // A Wayland client cannot place its own window. Setting x/y is skipped there.
+    function waylandOwnsPosition() {
+        const name = Qt.platform.pluginName || ""
+        return name.indexOf("wayland") === 0
+    }
+
+    function restorePosition() {
+        if (waylandOwnsPosition() || !windowSettings.havePosition)
+            return
+        x = windowSettings.windowX
+        y = windowSettings.windowY
+    }
+
+    function rememberPosition() {
+        if (!positionReady || backend.preview || waylandOwnsPosition())
+            return
+        windowSettings.windowX = Math.round(x)
+        windowSettings.windowY = Math.round(y)
+        windowSettings.havePosition = true
+        windowSettings.sync()
+    }
+
+    function rememberStaysOnTop() {
+        if (!positionReady || backend.preview)
+            return
+        windowSettings.staysOnTop = staysOnTop
+        windowSettings.sync()
+    }
+
+    onXChanged: rememberPosition()
+    onYChanged: rememberPosition()
+    onStaysOnTopChanged: rememberStaysOnTop()
+    onClosing: rememberPosition()
+
+    Settings {
+        id: windowSettings
+        // Preview grabs an offscreen frame and must not rewrite the saved window.
+        fileName: backend.preview ? "/tmp/click-window-preview.conf" : backend.dataPath + "/window.conf"
+        category: "window"
+        property bool staysOnTop: false
+        property int windowX: 0
+        property int windowY: 0
+        property bool havePosition: false
+
+        Component.onCompleted: {
+            // Children complete before the window is shown, so this lands before the first frame.
+            win.staysOnTop = staysOnTop
+            win.restorePosition()
+            win.positionReady = true
+        }
+    }
 
     // The animated face is the home screen. Library stays put after they open it.
     Timer {
@@ -59,6 +115,7 @@ ApplicationWindow {
     Shortcut { sequence: "Right"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.nextTrack() }
     Shortcut { sequence: "-"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(-1) }
     Shortcut { sequence: "="; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(1) }
+    Shortcut { sequence: "T"; enabled: !backend.signingIn && backend.kind !== "search"; context: Qt.ApplicationShortcut; onActivated: win.staysOnTop = !win.staysOnTop }
 
     // The Apple page stays loaded after sign-in, shrunk away, so the song keeps playing.
     Loader {
@@ -306,6 +363,7 @@ ApplicationWindow {
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("N   play next") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("U   Up Next") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("?   shortcuts") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("T   always on top") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Q   quit") }
         }
     }
