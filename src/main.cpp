@@ -10,6 +10,7 @@
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
 #include "backend.h"
+#include "mpris.h"
 #include "theme.h"
 #include "translator.h"
 
@@ -62,6 +63,13 @@ int main(int argc, char *argv[]) {
     engine.load(QUrl("qrc:/Main.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;
+
+    // Preview renders a fixture, and offscreen runs are headless. Neither should claim the player name.
+    if (!preview && app.platformName() != QLatin1String("offscreen")) {
+        auto *mpris = new Mpris(&backend, &backend);
+        if (!mpris->registerService())
+            delete mpris;
+    }
 
     return app.exec();
 }
