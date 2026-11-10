@@ -9,6 +9,8 @@ Item {
 
     property var window: null
     property bool soundOpen: false
+    readonly property bool mini: window ? window.mini : false
+    onMiniChanged: if (mini) soundOpen = false
     readonly property bool nowView: backend.kind === "now"
     readonly property bool searching: backend.kind === "search"
     readonly property alias searchText: search.text
@@ -22,7 +24,11 @@ Item {
     readonly property color faint: "#5cf8e7dc"
     readonly property color glass: "#1ff8e7dc"
     readonly property color hair: "#2bfff6ee"
-    readonly property color accent: theme.accent
+    // Every song tints the player; covers with no colour fall back to the theme.
+    property color accent: backend.hasArtColor ? backend.artColor : theme.accent
+    Behavior on accent { ColorAnimation { duration: 700; easing.type: Easing.InOutQuad } }
+    readonly property string trackKey: backend.track + "\u0000" + backend.artist
+    onTrackKeyChanged: if (backend.track !== "") meta.reveal()
 
     function clock(seconds) {
         const whole = Math.max(0, Math.round(seconds))
@@ -126,7 +132,7 @@ Item {
                 width: parent.width * Math.abs(fx.ratio - fx.zero)
                 height: parent.height
                 radius: 2
-                color: root.ink
+                color: Qt.lighter(root.accent, 1.2)
                 Behavior on width { enabled: !drag.pressed; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
             }
             // centre mark for bass and treble
@@ -181,26 +187,27 @@ Item {
         anchors.fill: parent
         source: backend.artwork
         fillMode: Image.PreserveAspectCrop
-        asynchronous: true
+        asynchronous: !backend.preview
         smooth: true
-        opacity: status === Image.Ready ? 1 : 0
+        // Full colour on the player, calmer behind lists so the words stay easy to read.
+        opacity: status === Image.Ready ? (root.nowView || root.mini ? 1 : 0.45) : 0
         Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } }
         layer.enabled: true
         layer.effect: MultiEffect {
             blurEnabled: true
             blurMax: 64
             blur: 1.0
-            saturation: 0.25
-            brightness: -0.42
+            saturation: 0.55
+            brightness: -0.22
             autoPaddingEnabled: false
         }
     }
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0; color: "#33000000" }
-            GradientStop { position: 0.55; color: "#59000000" }
-            GradientStop { position: 1; color: "#b3000000" }
+            GradientStop { position: 0; color: "#1a000000" }
+            GradientStop { position: 0.5; color: "#40000000" }
+            GradientStop { position: 1; color: "#99000000" }
         }
     }
 
@@ -215,7 +222,7 @@ Item {
     Item {
         id: nowPane
         anchors.fill: parent
-        opacity: root.nowView ? 1 : 0
+        opacity: root.nowView && !root.mini ? 1 : 0
         scale: root.nowView ? 1 : 0.965
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
@@ -232,17 +239,6 @@ Item {
             size: 20
             hit: 40
             onClicked: backend.menu()
-        }
-        Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: 22
-            text: qsTr("Now Playing")
-            color: root.faint
-            font.family: "Inter"
-            font.pixelSize: 11
-            font.weight: Font.DemiBold
-            font.letterSpacing: 1.4
-            font.capitalization: Font.AllUppercase
         }
         RoundButton {
             x: 52
@@ -273,6 +269,23 @@ Item {
             scale: backend.playing ? 1 : 0.9
             Behavior on scale { NumberAnimation { duration: 520; easing.type: Easing.OutBack; easing.overshoot: 1.2 } }
 
+            Rectangle {
+                id: artGlow
+                anchors.centerIn: parent
+                width: parent.width * 0.92
+                height: parent.height * 0.92
+                radius: 56
+                color: root.accent
+                opacity: backend.playing ? 0.55 : 0.22
+                Behavior on opacity { NumberAnimation { duration: 700; easing.type: Easing.InOutQuad } }
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    blurEnabled: true
+                    blurMax: 64
+                    blur: 1.0
+                    autoPaddingEnabled: true
+                }
+            }
             Item {
                 id: artShadowSource
                 anchors.fill: parent
@@ -313,7 +326,7 @@ Item {
                 anchors.fill: parent
                 source: backend.artwork
                 fillMode: Image.PreserveAspectCrop
-                asynchronous: true
+                asynchronous: !backend.preview
                 smooth: true
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.InOutQuad } }
@@ -342,6 +355,14 @@ Item {
         // title block: the song once, the artist once
         Column {
             id: meta
+            function reveal() { revealAnim.restart() }
+            property real shift: 0
+            transform: Translate { y: meta.shift }
+            ParallelAnimation {
+                id: revealAnim
+                NumberAnimation { target: meta; property: "opacity"; from: 0; to: 1; duration: 420; easing.type: Easing.OutCubic }
+                NumberAnimation { target: meta; property: "shift"; from: 10; to: 0; duration: 480; easing.type: Easing.OutCubic }
+            }
             x: nowPane.pad
             y: artFrame.y + artFrame.height + 26
             width: parent.width - nowPane.pad * 2
@@ -357,7 +378,8 @@ Item {
             }
             Text {
                 width: parent.width
-                text: backend.artist + (backend.album !== "" ? "  ·  " + backend.album : "")
+                text: root.hasTrack ? backend.artist + (backend.album !== "" ? "  ·  " + backend.album : "")
+                    : (backend.mixAvailable ? qsTr("Search for a song, or press M for a mix from Grok.") : qsTr("Search for a song to start."))
                 color: root.mute
                 elide: Text.ElideRight
                 font.family: "Inter"
@@ -390,7 +412,7 @@ Item {
                     width: parent.width * scrub.ratio
                     height: parent.height
                     radius: height / 2
-                    color: root.ink
+                    color: Qt.lighter(root.accent, 1.25)
                     Behavior on width {
                         enabled: !scrub.dragging
                         NumberAnimation { duration: 120; easing.type: Easing.Linear }
@@ -542,7 +564,7 @@ Item {
         width: parent.width
         height: parent.height
         x: root.nowView ? width * 0.35 : 0
-        opacity: root.nowView ? 0 : 1
+        opacity: root.nowView || root.mini ? 0 : 1
         visible: opacity > 0.01
         Behavior on x { NumberAnimation { duration: 360; easing.type: Easing.OutCubic } }
         Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
@@ -1006,6 +1028,118 @@ Item {
         }
     }
 
+    // ================= MINI =================
+    Item {
+        id: miniPane
+        anchors.fill: parent
+        opacity: root.mini ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+
+        Item {
+            id: miniArt
+            x: 16
+            y: 16
+            width: 100
+            height: 100
+            Rectangle {
+                anchors.fill: parent
+                radius: 18
+                gradient: Gradient {
+                    GradientStop { position: 0; color: Qt.lighter(root.accent, 1.15) }
+                    GradientStop { position: 1; color: Qt.darker(root.accent, 2.4) }
+                }
+            }
+            Image {
+                anchors.fill: parent
+                source: backend.artwork
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                layer.enabled: true
+                layer.effect: MultiEffect { maskEnabled: true; maskSource: miniMask }
+            }
+            Rectangle { id: miniMask; anchors.fill: parent; radius: 18; visible: false; layer.enabled: true }
+        }
+        Column {
+            x: 132
+            y: 18
+            width: parent.width - 132 - 76
+            spacing: 2
+            Text {
+                width: parent.width
+                text: root.hasTrack ? backend.track : qsTr("Nothing playing")
+                color: root.ink
+                elide: Text.ElideRight
+                font.family: "Inter"
+                font.pixelSize: 16
+                font.weight: Font.Bold
+            }
+            Text {
+                width: parent.width
+                text: backend.artist
+                color: root.mute
+                elide: Text.ElideRight
+                font.family: "Inter"
+                font.pixelSize: 12
+                visible: text !== ""
+            }
+        }
+        // thin seek bar
+        Item {
+            x: 132
+            y: 66
+            width: parent.width - 132 - 16
+            height: 16
+            Rectangle {
+                y: 6
+                width: parent.width
+                height: 4
+                radius: 2
+                color: "#33ffffff"
+                Rectangle {
+                    width: parent.width * (backend.duration > 0 ? Math.min(1, backend.position / backend.duration) : 0)
+                    height: parent.height
+                    radius: 2
+                    color: Qt.lighter(root.accent, 1.25)
+                }
+            }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: function (mouse) {
+                    if (backend.duration > 0)
+                        backend.seek(backend.duration * Math.max(0, Math.min(1, mouse.x / width)))
+                }
+            }
+        }
+        Row {
+            x: 124
+            y: 84
+            spacing: 4
+            RoundButton {
+                path: "M6 6h2v12H6zM9.5 12l8.5 6V6z"
+                size: 20
+                hit: 40
+                onClicked: backend.previousTrack()
+            }
+            RoundButton {
+                path: backend.playing ? "M6 5h4v14H6zM14 5h4v14h-4z" : "M8 5v14l11-7z"
+                size: 22
+                hit: 44
+                filled: true
+                fill: root.ink
+                tint: "#14110c"
+                onClicked: backend.playPause()
+            }
+            RoundButton {
+                path: "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"
+                size: 20
+                hit: 40
+                onClicked: backend.nextTrack()
+            }
+        }
+    }
+
     // ================= SOUND =================
     Rectangle {
         id: scrim
@@ -1138,14 +1272,150 @@ Item {
         }
     }
 
+    // ================= WELCOME (first run, signed out) =================
+    Item {
+        id: welcome
+        anchors.fill: parent
+        z: 7
+        visible: !backend.signedIn && !backend.signingIn && !root.mini
+        opacity: visible ? 1 : 0
+        Rectangle { anchors.fill: parent; color: "#14110c" }
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                GradientStop { position: 0; color: Qt.darker(root.accent, 2.6) }
+                GradientStop { position: 0.6; color: "#14110c" }
+            }
+            opacity: 0.9
+        }
+        MouseArea { anchors.fill: parent; onPressed: if (root.window) root.window.startSystemMove() }
+        Item {
+            id: logo
+            width: 96
+            height: 96
+            x: (parent.width - width) / 2
+            y: 92
+            Rectangle {
+                anchors.fill: parent
+                radius: 26
+                gradient: Gradient {
+                    GradientStop { position: 0; color: Qt.lighter(root.accent, 1.2) }
+                    GradientStop { position: 1; color: Qt.darker(root.accent, 2.6) }
+                }
+            }
+            Rectangle {
+                anchors.centerIn: parent
+                width: 54
+                height: 54
+                radius: 27
+                color: "#fffaf5"
+            }
+            Glyph {
+                x: (parent.width - 30) / 2 + 2
+                y: (parent.height - 30) / 2
+                size: 30
+                color: "#3b1a3f"
+                path: "M8 5v14l11-7z"
+            }
+        }
+        Text {
+            y: logo.y + logo.height + 28
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: qsTr("Music Player")
+            color: root.ink
+            font.family: "Inter"
+            font.pixelSize: 30
+            font.weight: Font.Bold
+        }
+        Text {
+            y: logo.y + logo.height + 76
+            x: 36
+            width: parent.width - 72
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: qsTr("Your Apple Music, in a beautiful mini player.")
+            color: root.mute
+            font.family: "Inter"
+            font.pixelSize: 15
+        }
+        Column {
+            id: perks
+            x: 56
+            y: logo.y + logo.height + 150
+            width: parent.width - 112
+            spacing: 12
+            Repeater {
+                model: [qsTr("Search, queue and play anything"), qsTr("Grok-made mixes from one sentence"), qsTr("Bass, treble and reverb built in"), qsTr("Media keys and a tiny mini mode")]
+                delegate: Row {
+                    required property string modelData
+                    spacing: 12
+                    Rectangle { y: 7; width: 6; height: 6; radius: 3; color: Qt.lighter(root.accent, 1.2) }
+                    Text {
+                        text: parent.modelData
+                        color: root.ink
+                        font.family: "Inter"
+                        font.pixelSize: 14
+                        opacity: 0.9
+                    }
+                }
+            }
+        }
+        Rectangle {
+            id: signIn
+            x: 36
+            y: parent.height - 120
+            width: parent.width - 72
+            height: 54
+            radius: 27
+            color: root.ink
+            scale: signArea.pressed ? 0.97 : 1
+            Behavior on scale { NumberAnimation { duration: 120 } }
+            Text {
+                anchors.centerIn: parent
+                text: qsTr("Sign in with Apple Music")
+                color: "#14110c"
+                font.family: "Inter"
+                font.pixelSize: 16
+                font.weight: Font.Bold
+            }
+            MouseArea {
+                id: signArea
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: backend.center()
+            }
+        }
+        Text {
+            y: signIn.y + signIn.height + 14
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: backend.status !== "" ? backend.status : qsTr("Needs an Apple Music subscription. Your sign-in stays on this machine.")
+            color: root.faint
+            wrapMode: Text.WordWrap
+            font.family: "Inter"
+            font.pixelSize: 11
+            leftPadding: 30
+            rightPadding: 30
+        }
+    }
+
     // window controls for the frameless window, above both panes
     Row {
         id: chrome
-        z: 11
+        z: 12
         anchors.right: parent.right
         anchors.rightMargin: 10
         y: 16
         spacing: 2
+        RoundButton {
+            path: root.mini ? "M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"
+                            : "M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"
+            size: 16
+            hit: 32
+            tint: root.mute
+            onClicked: if (root.window) root.window.mini = !root.window.mini
+        }
         RoundButton {
             path: "M5 11h14v2H5z"
             size: 16

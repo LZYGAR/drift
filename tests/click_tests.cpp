@@ -369,6 +369,31 @@ private slots:
         QVERIFY(!songs.first().toMap().value("artist").toString().isEmpty());
     }
 
+    void coverColourPicksAVividAccentAndIgnoresGrey()
+    {
+        QImage red(64, 64, QImage::Format_RGB32);
+        red.fill(QColor(200, 40, 40));
+        const QColor accent = Backend::accentFrom(red);
+        QVERIFY(accent.isValid());
+        QVERIFY(accent.hslHue() < 20 || accent.hslHue() > 340);
+        QVERIFY(accent.lightnessF() >= 0.57 && accent.lightnessF() <= 0.71);
+        QVERIFY(accent.hslSaturationF() >= 0.54);
+
+        // A mostly blue cover with a small red patch should go blue.
+        QImage mixed(64, 64, QImage::Format_RGB32);
+        mixed.fill(QColor(30, 80, 210));
+        for (int y = 0; y < 8; ++y)
+            for (int x = 0; x < 8; ++x)
+                mixed.setPixelColor(x, y, QColor(210, 30, 30));
+        const int hue = Backend::accentFrom(mixed).hslHue();
+        QVERIFY(hue > 200 && hue < 240);
+
+        QImage grey(64, 64, QImage::Format_RGB32);
+        grey.fill(QColor(128, 128, 128));
+        QVERIFY(!Backend::accentFrom(grey).isValid());
+        QVERIFY(!Backend::accentFrom(QImage()).isValid());
+    }
+
     void staleLibraryRowsAreDropped()
     {
         Backend backend;

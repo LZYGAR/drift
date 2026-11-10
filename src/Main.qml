@@ -3,17 +3,19 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtWebEngine
 import QtWebChannel
-import Qt.labs.settings
+import QtCore
 import ClickUi
 
 ApplicationWindow {
     id: win
+    // Full player, or a compact bar you can park in a corner.
+    property bool mini: false
     width: 360
-    height: 640
+    height: mini ? 132 : 640
     minimumWidth: 360
-    minimumHeight: 640
+    minimumHeight: mini ? 132 : 640
     maximumWidth: 360
-    maximumHeight: 640
+    maximumHeight: mini ? 132 : 640
     visible: true
     title: "Music Player"
     color: "#14110c"
@@ -61,6 +63,14 @@ ApplicationWindow {
         windowSettings.sync()
     }
 
+    function rememberMini() {
+        if (!positionReady || backend.preview)
+            return
+        windowSettings.mini = mini
+        windowSettings.sync()
+    }
+    onMiniChanged: rememberMini()
+
     onXChanged: rememberPosition()
     onYChanged: rememberPosition()
     onStaysOnTopChanged: rememberStaysOnTop()
@@ -69,9 +79,10 @@ ApplicationWindow {
     Settings {
         id: windowSettings
         // Preview grabs an offscreen frame and must not rewrite the saved window.
-        fileName: backend.preview ? "/tmp/click-window-preview.conf" : backend.dataPath + "/window.conf"
+        location: "file://" + (backend.preview ? "/tmp/click-window-preview.conf" : backend.dataPath + "/window.conf")
         category: "window"
         property bool staysOnTop: false
+        property bool mini: false
         property int windowX: 0
         property int windowY: 0
         property bool havePosition: false
@@ -79,6 +90,7 @@ ApplicationWindow {
         Component.onCompleted: {
             // Children complete before the window is shown, so this lands before the first frame.
             win.staysOnTop = staysOnTop
+            win.mini = backend.previewMini || mini
             win.restorePosition()
             win.positionReady = true
         }
@@ -118,6 +130,7 @@ ApplicationWindow {
     Shortcut { sequence: "Right"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nextTrack() }
     Shortcut { sequence: "-"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(-1) }
     Shortcut { sequence: "="; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(1) }
+    Shortcut { sequence: "Ctrl+M"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: win.mini = !win.mini }
     Shortcut { sequence: "T"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: win.staysOnTop = !win.staysOnTop }
 
     // The Apple page stays loaded after sign-in, shrunk away, so the song keeps playing.
@@ -291,7 +304,7 @@ ApplicationWindow {
     }
 
     Timer {
-        interval: 900
+        interval: 2200
         running: backend.shotPath !== ""
         onTriggered: player.grabToImage(function (result) {
             result.saveToFile(backend.shotPath)
@@ -368,6 +381,7 @@ ApplicationWindow {
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("M   make a mix with Grok") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("?   shortcuts") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("T   always on top") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Ctrl+M   mini player") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Q   quit") }
         }
     }

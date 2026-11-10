@@ -2,6 +2,9 @@
 #include "mixer.h"
 
 #include <QDir>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -71,6 +74,19 @@ Backend::Backend(bool preview, QObject *parent)
         m_stack = {songs};
         if (qEnvironmentVariableIsSet("CLICK_PREVIEW_NOW"))
             showNowPlaying();
+        // Lets screenshots show a real cover: CLICK_PREVIEW_ART=/path/to/cover.png
+        if (qEnvironmentVariableIsSet("CLICK_PREVIEW_OUT")) {
+            m_signedIn = false;
+            m_playing = false;
+            m_track.clear();
+            m_artist.clear();
+            m_album.clear();
+        }
+        const QString previewArt = qEnvironmentVariable("CLICK_PREVIEW_ART");
+        if (!previewArt.isEmpty()) {
+            m_artwork = QUrl::fromLocalFile(previewArt).toString();
+            m_artColor = accentFrom(QImage(previewArt));
+        }
         if (qEnvironmentVariableIsSet("CLICK_PREVIEW_MIX")) {
             m_mixStatus = tr("Finding songs… 7 of 20");
             m_mixBusy = true;
@@ -233,6 +249,76 @@ void Backend::showToast(const QString &text) {
             return;
         m_toast.clear();
         emit toastChanged();
+    });
+}
+
+// Picks the most vivid hue on the cover, then brings it to a lightness that
+// reads well on the dark player.
+QColor Backend::accentFrom(const QImage &cover) {
+    if (cover.isNull())
+        return {};
+    const QImage small = cover.scaled(32, 32, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                             .convertToFormat(QImage::Format_RGB32);
+    constexpr int bins = 12;
+    double weight[bins] = {};
+    double red[bins] = {}, green[bins] = {}, blue[bins] = {};
+    double total = 0;
+    for (int y = 0; y < small.height(); ++y) {
+        for (int x = 0; x < small.width(); ++x) {
+            const QColor c = small.pixelColor(x, y);
+            const double s = c.hsvSaturationF();
+            const double v = c.valueF();
+            if (c.hsvHue() < 0 || v < 0.18)
+                continue;
+            const double w = s * s * v;
+            const int bin = qBound(0, c.hsvHue() * bins / 360, bins - 1);
+            weight[bin] += w;
+            red[bin] += w * c.redF();
+            green[bin] += w * c.greenF();
+            blue[bin] += w * c.blueF();
+            total += w;
+        }
+    }
+    int best = 0;
+    for (int i = 1; i < bins; ++i)
+        if (weight[i] > weight[best])
+            best = i;
+    // Too little colour (a grey or black-and-white cover): let the theme accent win.
+    if (total < 6.0 || weight[best] < 2.0)
+        return {};
+    QColor accent = QColor::fromRgbF(red[best] / weight[best], green[best] / weight[best], blue[best] / weight[best]);
+    accent = QColor::fromHslF(accent.hslHueF(), qMax(0.55, accent.hslSaturationF()),
+                              qBound(0.58, accent.lightnessF(), 0.70));
+    return accent;
+}
+
+// Fetches the cover from the same CDN the page already uses, only to read its colour.
+void Backend::fetchArtColor() {
+    if (m_preview)
+        return;
+    const QString requested = m_artwork;
+    const QUrl url(requested);
+    if (requested.isEmpty() || url.scheme() != QStringLiteral("https")) {
+        if (m_artColor.isValid()) {
+            m_artColor = QColor();
+            emit artColorChanged();
+        }
+        return;
+    }
+    if (!m_net)
+        m_net = new QNetworkAccessManager(this);
+    QNetworkReply *reply = m_net->get(QNetworkRequest(url));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, requested] {
+        reply->deleteLater();
+        if (requested != m_artwork || reply->error() != QNetworkReply::NoError)
+            return;
+        QImage image;
+        image.loadFromData(reply->read(4 * 1024 * 1024));
+        const QColor accent = accentFrom(image);
+        if (accent == m_artColor)
+            return;
+        m_artColor = accent;
+        emit artColorChanged();
     });
 }
 
@@ -645,7 +731,10 @@ void Backend::ingest(const QString &json) {
     }
     takeString("artist", m_artist);
     takeString("album", m_album);
+    const QString previousArtwork = m_artwork;
     takeString("artwork", m_artwork);
+    if (m_artwork != previousArtwork)
+        fetchArtColor();
     takeString("trackId", m_trackId);
     if (object.contains(QStringLiteral("position")) && object.value(QStringLiteral("position")).isDouble()) {
         const double value = object.value(QStringLiteral("position")).toDouble();

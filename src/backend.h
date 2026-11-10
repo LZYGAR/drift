@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QColor>
+#include <QImage>
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
@@ -25,6 +27,7 @@ class Backend : public QObject {
     Q_PROPERTY(QString dataPath READ dataPath CONSTANT)
     Q_PROPERTY(QString shotPath READ shotPath CONSTANT)
     Q_PROPERTY(bool preview READ preview CONSTANT)
+    Q_PROPERTY(bool previewMini READ previewMini CONSTANT)
     Q_PROPERTY(bool signingIn READ signingIn NOTIFY sessionChanged)
     Q_PROPERTY(bool signedIn READ signedIn NOTIFY sessionChanged)
     Q_PROPERTY(QString status READ status NOTIFY sessionChanged)
@@ -45,6 +48,8 @@ class Backend : public QObject {
     Q_PROPERTY(double volume READ volume NOTIFY playbackChanged)
     Q_PROPERTY(QString command READ command NOTIFY commandReady)
     Q_PROPERTY(QString toast READ toast NOTIFY toastChanged)
+    Q_PROPERTY(QColor artColor READ artColor NOTIFY artColorChanged)
+    Q_PROPERTY(bool hasArtColor READ hasArtColor NOTIFY artColorChanged)
     Q_PROPERTY(bool mixAvailable READ mixAvailable CONSTANT)
     Q_PROPERTY(bool mixBusy READ mixBusy NOTIFY mixChanged)
     Q_PROPERTY(QString mixStatus READ mixStatus NOTIFY mixChanged)
@@ -57,6 +62,7 @@ public:
     QString dataPath() const { return m_dataPath; }
     QString shotPath() const { return m_shotPath; }
     bool preview() const { return m_preview; }
+    bool previewMini() const { return m_preview && qEnvironmentVariableIsSet("CLICK_PREVIEW_MINI"); }
     bool signingIn() const { return m_signingIn; }
     bool signedIn() const { return m_signedIn; }
     QString status() const { return m_status; }
@@ -77,6 +83,10 @@ public:
     double volume() const { return m_volume; }
     QString command() const { return m_command; }
     QString toast() const { return m_toast; }
+    QColor artColor() const { return m_artColor; }
+    bool hasArtColor() const { return m_artColor.isValid(); }
+    // A lively accent taken from a cover; invalid for grey or empty covers.
+    static QColor accentFrom(const QImage &cover);
     bool mixAvailable() const;
     bool mixBusy() const { return m_mixBusy; }
     QString mixStatus() const { return m_mixStatus; }
@@ -115,6 +125,7 @@ signals:
     void commandReady();
     void toastChanged();
     void mixChanged();
+    void artColorChanged();
 
 private:
     struct Row {
@@ -139,6 +150,7 @@ private:
     void queue(const QString &command, const QString &arg = {}, const QString &type = {});
     void sendCommand(const QString &command, const QString &arg, const QString &type, int token);
     void showToast(const QString &text);
+    void fetchArtColor();
     void showNowPlaying();
     Screen musicScreen() const;
     Screen rootScreen() const;
@@ -165,6 +177,8 @@ private:
     double m_volume = 1;
     QString m_command;
     QString m_toast;
+    QColor m_artColor;
+    class QNetworkAccessManager *m_net = nullptr;
     class Mixer *m_mixer = nullptr;
     bool m_mixBusy = false;
     bool m_mixSaved = false;
