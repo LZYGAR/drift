@@ -4,21 +4,57 @@ import QtQuick.Controls.Material
 import QtWebEngine
 import QtWebChannel
 import QtCore
+import Qt.labs.platform as Platform
 import ClickUi
 
 ApplicationWindow {
     id: win
     // Full player, or a compact bar you can park in a corner.
     property bool mini: false
+    // Cinema: borderless full screen with the big cover and the lyrics (FullScreenLyricsView.qml).
+    property bool cinema: false
+    function setCinema(on) {
+        if (on === cinema)
+            return
+        if (on) {
+            if (!backend.signedIn || backend.signingIn)
+                return
+            // (A mini player stays mini underneath: the window's own height is left alone while full screen.)
+            // The size limits lift first; otherwise the window refuses to grow past 360 px.
+            cinema = true
+            visibility = Window.FullScreen
+        } else {
+            // Leave full screen first; only then do the 360 px limits and size bindings come back.
+            visibility = Window.Windowed
+            cinema = false
+        }
+    }
+    readonly property int fullHeight: 640
+    readonly property int miniHeight: 96
+    // 0 is the full player, 1 the mini player. The window morphs between the
+    // two on a spring that is damped enough not to wobble the window frame.
+    property real morph: mini ? 1 : 0
+    Behavior on morph {
+        // CLICK_PREVIEW_PANEL=morph flips mini mode once, to watch the resize. A preview that can be carried
+        // between desktops (CLICK_DESKTOP_TEST) animates like the real app, so what is tested is what runs.
+        // While carried along there is no animation at all: Hyprland sets the size itself, and each in-between
+        // height the window passed through would make it re-centre.
+        enabled: win.positionReady && !desktop.away && (!backend.preview || backend.previewPanel === "morph" || desktop.available)
+        SpringAnimation { spring: Glass.springWindow; damping: Glass.dampingWindow; epsilon: 0.002 }
+    }
+    readonly property int shownHeight: Math.round(fullHeight - (fullHeight - miniHeight) * Math.max(0, Math.min(1, morph)))
+    // The size follows the mini/full morph, except in cinema, where the compositor owns it.
     width: 360
-    height: mini ? 132 : 640
-    minimumWidth: 360
-    minimumHeight: mini ? 132 : 640
-    maximumWidth: 360
-    maximumHeight: mini ? 132 : 640
+    height: shownHeight
+    Binding { target: win; property: "width"; value: 360; when: !win.cinema; restoreMode: Binding.RestoreNone }
+    Binding { target: win; property: "height"; value: win.shownHeight; when: !win.cinema; restoreMode: Binding.RestoreNone }
+    minimumWidth: cinema ? 0 : 360
+    minimumHeight: cinema ? 0 : shownHeight
+    maximumWidth: cinema ? 16777215 : 360
+    maximumHeight: cinema ? 16777215 : shownHeight
     visible: true
     title: "Music Player"
-    color: "#14110c"
+    color: Glass.base
     flags: Qt.Window | Qt.FramelessWindowHint | (staysOnTop ? Qt.WindowStaysOnTopHint : 0)
 
     Material.theme: Material.Dark
@@ -27,7 +63,9 @@ ApplicationWindow {
 
     property bool helpVisible: false
     // Text fields own the keyboard on these screens, so single-letter shortcuts stand down.
-    readonly property bool typing: backend.kind === "search" || backend.kind === "mix"
+    readonly property bool typing: backend.kind === "search" || backend.kind === "mix" || player.paletteOpen || player.plusTyping
+    // The palette's own field handles the arrows and Enter while it is open; so does the + menu's new-playlist field.
+    readonly property bool listKeys: !backend.signingIn && !player.paletteOpen && !player.plusOpen
     property bool faceOpened: false
     property string authHost: ""
     property bool staysOnTop: false
@@ -64,12 +102,32 @@ ApplicationWindow {
     }
 
     function rememberMini() {
-        if (!positionReady || backend.preview)
+        // Not while the player is carried along as the mini player: quitting then must not
+        // bring it back as the mini player next time.
+        if (!positionReady || backend.preview || desktop.away)
             return
         windowSettings.mini = mini
         windowSettings.sync()
     }
     onMiniChanged: rememberMini()
+
+    // Switching desktops carries the player along as the mini player (see desktop.h).
+    Binding { target: desktop; property: "playing"; value: backend.playing && !win.cinema }
+    Binding { target: desktop; property: "mini"; value: win.mini }
+    Connections {
+        target: desktop
+        function onMiniRequested(mini) { win.mini = mini }
+    }
+
+    Connections {
+        target: player
+        function onVisualStyleChanged() {
+            if (!win.positionReady || backend.preview)
+                return
+            windowSettings.visualStyle = player.visualStyle
+            windowSettings.sync()
+        }
+    }
 
     onXChanged: rememberPosition()
     onYChanged: rememberPosition()
@@ -86,14 +144,37 @@ ApplicationWindow {
         property int windowX: 0
         property int windowY: 0
         property bool havePosition: false
+        property string visualStyle: "liquid"
 
         Component.onCompleted: {
             // Children complete before the window is shown, so this lands before the first frame.
             win.staysOnTop = staysOnTop
             win.mini = backend.previewMini || mini
+            // CLICK_PREVIEW_PANEL=cinema shows the full-screen view (a screenshot cannot go real full screen).
+            if (backend.previewPanel === "cinema") { win.cinema = true; win.width = 1280; win.height = 720 }
+            if (!backend.preview) player.visualStyle = visualStyle
             win.restorePosition()
             win.positionReady = true
         }
+    }
+
+    Timer {
+        interval: 1200
+        running: backend.previewPanel === "morph"
+        onTriggered: win.mini = !win.mini
+    }
+
+    // CLICK_DESKTOP_TEST=1 CLICK_PREVIEW_PANEL=desktop: carries this preview window away, then home, as a
+    // desktop switch would, to watch the geometry. (It pins and moves the window; nothing else does that in preview.)
+    Timer {
+        interval: 1500
+        running: backend.previewPanel === "desktop"
+        onTriggered: desktop.simulate(true)
+    }
+    Timer {
+        interval: 7000
+        running: backend.previewPanel === "desktop"
+        onTriggered: desktop.simulate(false)
     }
 
     // The animated face is the home screen. Library stays put after they open it.
@@ -115,22 +196,49 @@ ApplicationWindow {
     Shortcut { sequence: "M"; enabled: !backend.signingIn && !win.typing && backend.mixAvailable; context: Qt.ApplicationShortcut; onActivated: backend.openMix() }
     Shortcut { sequence: "Q"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
     Shortcut { sequence: "Space"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.playPause() }
-    Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; onActivated: backend.menu() }
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.ApplicationShortcut
+        // Closes whatever is on top first: cinema, the palette, then Sound, then one screen back.
+        onActivated: {
+            if (win.cinema) win.setCinema(false)
+            else if (player.paletteOpen) player.paletteOpen = false
+            else if (player.lyricsOpen) player.lyricsOpen = false
+            else if (player.plusOpen) player.plusOpen = false
+            else if (player.styleOpen) player.styleOpen = false
+            else if (player.soundOpen) player.soundOpen = false
+            else if (win.helpVisible) win.helpVisible = false
+            else backend.menu()
+        }
+    }
+    Shortcut {
+        sequence: "Ctrl+K"
+        enabled: !backend.signingIn && backend.signedIn
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (win.mini) win.mini = false
+            player.soundOpen = false
+            player.styleOpen = false
+            player.paletteOpen = !player.paletteOpen
+        }
+    }
     Shortcut {
         sequence: "Backspace"
-        enabled: !backend.signingIn && (!win.typing || player.searchVisible && player.searchText.length === 0 || player.mixVisible && player.mixText.length === 0)
+        enabled: !backend.signingIn && !player.paletteOpen && (!win.typing || player.searchVisible && player.searchText.length === 0 || player.mixVisible && player.mixText.length === 0)
         context: Qt.ApplicationShortcut
         onActivated: backend.menu()
     }
-    Shortcut { sequence: "Return"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: backend.center() }
-    Shortcut { sequence: "Enter"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: backend.center() }
-    Shortcut { sequence: "Up"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: backend.wheel(-1) }
-    Shortcut { sequence: "Down"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: backend.wheel(1) }
+    Shortcut { sequence: "Return"; enabled: win.listKeys; context: Qt.ApplicationShortcut; onActivated: backend.center() }
+    Shortcut { sequence: "Enter"; enabled: win.listKeys; context: Qt.ApplicationShortcut; onActivated: backend.center() }
+    Shortcut { sequence: "Up"; enabled: win.listKeys; context: Qt.ApplicationShortcut; onActivated: backend.wheel(-1) }
+    Shortcut { sequence: "Down"; enabled: win.listKeys; context: Qt.ApplicationShortcut; onActivated: backend.wheel(1) }
     Shortcut { sequence: "Left"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.previousTrack() }
     Shortcut { sequence: "Right"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nextTrack() }
     Shortcut { sequence: "-"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(-1) }
     Shortcut { sequence: "="; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: backend.nudgeVolume(1) }
-    Shortcut { sequence: "Ctrl+M"; enabled: !backend.signingIn; context: Qt.ApplicationShortcut; onActivated: win.mini = !win.mini }
+    Shortcut { sequence: "F11"; enabled: !backend.signingIn && backend.signedIn; context: Qt.ApplicationShortcut; onActivated: win.setCinema(!win.cinema) }
+    Shortcut { sequence: "Ctrl+M"; enabled: !backend.signingIn && !win.cinema; context: Qt.ApplicationShortcut; onActivated: win.mini = !win.mini }
+    Shortcut { sequence: "H"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: player.toggleHeart() }
     Shortcut { sequence: "T"; enabled: !backend.signingIn && !win.typing; context: Qt.ApplicationShortcut; onActivated: win.staysOnTop = !win.staysOnTop }
 
     // The Apple page stays loaded after sign-in, shrunk away, so the song keeps playing.
@@ -244,11 +352,12 @@ ApplicationWindow {
                 id: web
                 profile: musicProfile
                 webChannel: channel
-                // Stays full size so the song keeps reporting. Covered once signed in.
-                anchors.fill: parent
-                anchors.bottomMargin: backend.signingIn ? 72 : 0
+                // Stays full size so the song keeps reporting, even while the
+                // window is the mini player. Covered once signed in.
+                width: parent.width
+                height: backend.signingIn ? parent.height - 72 : win.fullHeight
                 opacity: backend.signingIn ? 1 : 0
-                backgroundColor: "#14110c"
+                backgroundColor: Glass.base
                 url: "https://music.apple.com/"
                 settings.javascriptEnabled: true
                 settings.playbackRequiresUserGesture: false
@@ -306,20 +415,73 @@ ApplicationWindow {
     Timer {
         interval: 2200
         running: backend.shotPath !== ""
-        onTriggered: player.grabToImage(function (result) {
+        onTriggered: (win.cinema ? cinemaView : player).grabToImage(function (result) {
             result.saveToFile(backend.shotPath)
             Qt.quit()
         })
+    }
+
+    // A companion in the system tray: what is playing, the transport, and a few
+    // jumps through the song, without bringing the window forward.
+    Platform.SystemTrayIcon {
+        id: tray
+        // CLICK_PREVIEW_PANEL=tray shows it in preview too, to test the menu.
+        visible: available && backend.signedIn && (!backend.preview || backend.previewPanel === "tray")
+        icon.name: "click"
+        icon.source: "qrc:/click.svg"
+        tooltip: backend.track !== "" ? backend.track + " · " + backend.artist : "Music Player"
+        // The time in the menu moves in 5 second steps, so the tray is not redrawn ten times a second.
+        readonly property real coarse: Math.floor(backend.position / 5) * 5
+        function reveal() {
+            win.show()
+            win.raise()
+            win.requestActivate()
+        }
+        onActivated: function (reason) {
+            if (reason === Platform.SystemTrayIcon.MiddleClick)
+                backend.playPause()
+            else if (reason !== Platform.SystemTrayIcon.Context)
+                reveal()
+        }
+        menu: Platform.Menu {
+            Platform.MenuItem {
+                enabled: false
+                text: backend.track !== "" ? backend.track + " · " + backend.artist : qsTr("Nothing playing")
+            }
+            Platform.MenuItem {
+                enabled: false
+                visible: backend.duration > 0
+                text: backend.formatClock(tray.coarse) + " / " + backend.durationLabel
+            }
+            Platform.MenuSeparator {}
+            Platform.MenuItem { text: backend.playing ? qsTr("Pause") : qsTr("Play"); onTriggered: backend.playPause() }
+            Platform.MenuItem { text: qsTr("Next"); onTriggered: backend.nextTrack() }
+            Platform.MenuItem { text: qsTr("Previous"); onTriggered: backend.previousTrack() }
+            Platform.MenuSeparator {}
+            Platform.MenuItem { text: qsTr("Back 15 seconds"); enabled: backend.duration > 0; onTriggered: backend.seekBy(-15) }
+            Platform.MenuItem { text: qsTr("Forward 30 seconds"); enabled: backend.duration > 0; onTriggered: backend.seekBy(30) }
+            Platform.MenuItem { text: qsTr("Start over"); enabled: backend.duration > 0; onTriggered: backend.seek(0) }
+            Platform.MenuSeparator {}
+            Platform.MenuItem { text: qsTr("Show player"); onTriggered: tray.reveal() }
+            Platform.MenuItem { text: qsTr("Quit"); onTriggered: Qt.quit() }
+        }
     }
 
     Player {
         id: player
         anchors.fill: parent
         z: 2
-        visible: !backend.signingIn
+        visible: !backend.signingIn && !win.cinema
         window: win
         LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
         LayoutMirroring.childrenInherit: true
+    }
+
+    FullScreenLyricsView {
+        id: cinemaView
+        z: 3
+        active: win.cinema
+        onExitRequested: win.setCinema(false)
     }
 
     Column {
@@ -379,9 +541,12 @@ ApplicationWindow {
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("N   play next") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("U   Up Next") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("M   make a mix with Grok") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Ctrl+K   run any command") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("?   shortcuts") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("H   heart the song") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("T   always on top") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Ctrl+M   mini player") }
+            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("F11   full screen with lyrics") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Q   quit") }
         }
     }

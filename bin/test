@@ -8,3 +8,18 @@ cd "$ROOT/build/tests"
 qmake6 "$ROOT/tests/click_tests.pro"
 make -j"$(nproc)"
 QT_QPA_PLATFORM=offscreen ./click_tests
+
+# The QML components, driven with real key presses and mouse moves.
+mkdir -p "$ROOT/build/ui-tests"
+cd "$ROOT/build/ui-tests"
+qmake6 "$ROOT/tests/ui/ui_tests.pro"
+make -j"$(nproc)"
+QT_QPA_PLATFORM=offscreen ./click_ui_tests -input "$ROOT/tests/ui"
+
+# The script that runs inside the Apple Music page, against a fake MusicKit (needs node).
+if command -v node >/dev/null 2>&1; then
+  cd "$ROOT"
+  node tests/pod.test.js
+else
+  echo "node not found: skipping tests/pod.test.js"
+fi

@@ -65,6 +65,14 @@ QVariantMap MprisState::metadata(const QString &track, const QString &artist, co
     return map;
 }
 
+QString MprisState::loopStatus(int repeat) {
+    return repeat == 1 ? QStringLiteral("Track") : repeat == 2 ? QStringLiteral("Playlist") : QStringLiteral("None");
+}
+
+int MprisState::repeatFromLoop(const QString &loop) {
+    return loop == QStringLiteral("Track") ? 1 : loop == QStringLiteral("Playlist") ? 2 : 0;
+}
+
 MprisUpdate MprisState::diff(const MprisView &before, const MprisView &after) {
     MprisUpdate update;
     const QString was = playbackStatus(before.playing, before.track);
@@ -80,6 +88,10 @@ MprisUpdate MprisState::diff(const MprisView &before, const MprisView &after) {
     }
     if (qAbs(before.volume - after.volume) >= 0.001)
         update.properties.insert(QStringLiteral("Volume"), after.volume);
+    if (before.repeat != after.repeat)
+        update.properties.insert(QStringLiteral("LoopStatus"), loopStatus(after.repeat));
+    if (before.shuffle != after.shuffle)
+        update.properties.insert(QStringLiteral("Shuffle"), after.shuffle);
 
     const double delta = after.position - before.position;
     const bool moved = !qFuzzyCompare(before.position + 1.0, after.position + 1.0);
@@ -135,6 +147,8 @@ class MprisPlayerAdaptor : public QDBusAbstractAdaptor {
     Q_PROPERTY(QVariantMap Metadata READ metadata)
     Q_PROPERTY(double Volume READ volume WRITE setVolume)
     Q_PROPERTY(qlonglong Position READ position)
+    Q_PROPERTY(QString LoopStatus READ loopStatus WRITE setLoopStatus)
+    Q_PROPERTY(bool Shuffle READ shuffle WRITE setShuffle)
     Q_PROPERTY(double Rate READ rate)
     Q_PROPERTY(double MinimumRate READ rate)
     Q_PROPERTY(double MaximumRate READ rate)
@@ -155,6 +169,10 @@ public:
     double volume() const { return owner()->volume(); }
     void setVolume(double value) { owner()->setVolume(value); }
     qlonglong position() const { return owner()->position(); }
+    QString loopStatus() const { return owner()->loopStatus(); }
+    void setLoopStatus(const QString &loop) { owner()->setLoopStatus(loop); }
+    bool shuffle() const { return owner()->shuffle(); }
+    void setShuffle(bool on) { owner()->setShuffle(on); }
     double rate() const { return 1.0; }
     bool canControl() const { return true; }
 
@@ -231,7 +249,10 @@ MprisView Mpris::capture() const {
     view.track = m_backend->track();
     view.artist = m_backend->artist();
     view.album = m_backend->album();
-    view.artwork = m_backend->artwork();
+    // The saved copy when there is one: widgets read a file more reliably than https.
+    view.artwork = m_backend->artworkLocal().isEmpty() ? m_backend->artwork() : m_backend->artworkLocal();
+    view.repeat = m_backend->repeatMode();
+    view.shuffle = m_backend->shuffle();
     view.position = m_backend->position();
     view.duration = m_backend->duration();
     view.volume = m_backend->volume();
@@ -281,8 +302,8 @@ QString Mpris::playbackStatus() const {
 }
 
 QVariantMap Mpris::metadata() const {
-    return MprisState::metadata(m_backend->track(), m_backend->artist(), m_backend->album(), m_backend->artwork(),
-                                m_backend->duration());
+    const MprisView view = capture();
+    return MprisState::metadata(view.track, view.artist, view.album, view.artwork, view.duration);
 }
 
 double Mpris::volume() const {
@@ -293,6 +314,22 @@ void Mpris::setVolume(double value) {
     if (qIsNaN(value))
         return;
     m_backend->setVolume(value);
+}
+
+QString Mpris::loopStatus() const {
+    return MprisState::loopStatus(m_backend->repeatMode());
+}
+
+void Mpris::setLoopStatus(const QString &loop) {
+    m_backend->setRepeatMode(MprisState::repeatFromLoop(loop));
+}
+
+bool Mpris::shuffle() const {
+    return m_backend->shuffle();
+}
+
+void Mpris::setShuffle(bool on) {
+    m_backend->setShuffle(on);
 }
 
 qlonglong Mpris::position() const {

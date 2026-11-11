@@ -17,6 +17,8 @@ struct MprisView {
     double position = 0;
     double duration = 0;
     double volume = 1;
+    int repeat = 0;
+    bool shuffle = false;
 };
 
 // What a playbackChanged edge should publish. Position is polled, so it is never a key.
@@ -33,6 +35,9 @@ public:
     static QVariantMap metadata(const QString &track, const QString &artist, const QString &album,
                                 const QString &artwork, double durationSeconds);
     static qint64 secondsToMicros(double seconds);
+    // MusicKit's repeat number (0 off, 1 song, 2 queue) as an MPRIS LoopStatus, and back.
+    static QString loopStatus(int repeat);
+    static int repeatFromLoop(const QString &loop);
     static MprisUpdate diff(const MprisView &before, const MprisView &after);
 };
 
@@ -62,6 +67,10 @@ private:
     double volume() const;
     void setVolume(double value);
     qlonglong position() const;
+    QString loopStatus() const;
+    void setLoopStatus(const QString &loop);
+    bool shuffle() const;
+    void setShuffle(bool on);
 
     Backend *m_backend;
     MprisPlayerAdaptor *m_player = nullptr;

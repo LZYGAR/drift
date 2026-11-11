@@ -1,3 +1,18 @@
 module ClickUi
+singleton Glass 1.0 Glass.qml
 Wheel 1.0 Wheel.qml
 Player 1.0 Player.qml
+Glyph 1.0 Glyph.qml
+IconButton 1.0 IconButton.qml
+GlassPanel 1.0 GlassPanel.qml
+MeshBackground 1.0 MeshBackground.qml
+LiquidScrubber 1.0 LiquidScrubber.qml
+AdvancedSoundStudio 1.0 AdvancedSoundStudio.qml
+CommandPalette 1.0 CommandPalette.qml
+HeaderPlusPill 1.0 HeaderPlusPill.qml
+ActionDropdown 1.0 ActionDropdown.qml
+LiquidSwitch 1.0 LiquidSwitch.qml
+PlayPauseGlyph 1.0 PlayPauseGlyph.qml
+LyricsView 1.0 LyricsView.qml
+FullScreenLyricsView 1.0 FullScreenLyricsView.qml
+LiquidField 1.0 LiquidField.qml

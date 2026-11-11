@@ -10,12 +10,78 @@
 #include <QStandardPaths>
 #include <QtMath>
 
+#include <cmath>
 #include <csignal>
 #include <sys/prctl.h>
 
 namespace {
 
 constexpr double kMaxShelfDb = 10.0;
+constexpr double kMaxMidDb = 8.0;
+constexpr double kBassHz = 100.0;
+constexpr double kMidHz = 1000.0;
+constexpr double kTrebleHz = 8000.0;
+constexpr double kShelfQ = 0.7;
+constexpr double kMidQ = 0.9;
+constexpr double kRate = 48000.0;
+
+// Gain in dB of one biquad at `hz` (Audio EQ Cookbook forms, the same family
+// PipeWire's bq_lowshelf, bq_peaking and bq_highshelf use).
+enum class Band { LowShelf, Peaking, HighShelf };
+double biquadDb(Band band, double centre, double q, double gainDb, double hz) {
+    if (qFuzzyIsNull(gainDb))
+        return 0;
+    const double a = std::pow(10.0, gainDb / 40.0);
+    const double w0 = 2 * M_PI * centre / kRate;
+    const double cosw = std::cos(w0);
+    const double alpha = std::sin(w0) / (2 * q);
+    double b0, b1, b2, a0, a1, a2;
+    if (band == Band::Peaking) {
+        b0 = 1 + alpha * a;
+        b1 = -2 * cosw;
+        b2 = 1 - alpha * a;
+        a0 = 1 + alpha / a;
+        a1 = -2 * cosw;
+        a2 = 1 - alpha / a;
+    } else {
+        const double root = 2 * std::sqrt(a) * alpha;
+        const double sign = band == Band::LowShelf ? 1.0 : -1.0;
+        b0 = a * ((a + 1) - sign * (a - 1) * cosw + root);
+        b1 = sign * 2 * a * ((a - 1) - sign * (a + 1) * cosw);
+        b2 = a * ((a + 1) - sign * (a - 1) * cosw - root);
+        a0 = (a + 1) + sign * (a - 1) * cosw + root;
+        a1 = -sign * 2 * ((a - 1) + sign * (a + 1) * cosw);
+        a2 = (a + 1) + sign * (a - 1) * cosw - root;
+    }
+    const double w = 2 * M_PI * hz / kRate;
+    auto power = [w](double c0, double c1, double c2) {
+        const double re = c0 + c1 * std::cos(w) + c2 * std::cos(2 * w);
+        const double im = c1 * std::sin(w) + c2 * std::sin(2 * w);
+        return re * re + im * im;
+    };
+    return 10.0 * std::log10(power(b0, b1, b2) / power(a0, a1, a2));
+}
+
+constexpr double kBandHz[10] = {31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000};
+// One octave apart, so Q = 1 / (2 sinh(ln2 / 2)) ~ 1.41 makes neighbours overlap into a smooth curve.
+constexpr double kBandQ = 1.41;
+
+struct Preset {
+    const char *name;
+    // Simple mode: bass, mid, treble (-1..1) and reverb (0..1).
+    double bass, mid, treble, reverb;
+    // Advanced mode: gains in dB at kBandHz.
+    double bands[10];
+};
+const Preset kPresets[] = {
+    {"Flat Studio", 0.0, 0.0, 0.0, 0.0, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {"Ultra Bass", 0.9, -0.1, 0.0, 0.0, {10, 9, 6, 3, 0, -1, -1, 0, 0, 0}},
+    {"Vocal Pop", -0.1, 0.5, 0.35, 0.0, {-2, -1, 0, 1, 2, 4, 4, 3, 2, 1}},
+    {"Late Night Intimate", 0.25, -0.2, -0.4, 0.22, {2, 2, 1, 0, -1, -2, -3, -4, -5, -6}},
+    {"Sub-Bass Warmth", 0.7, -0.1, -0.15, 0.05, {7, 6, 3, 0, -1, -1, -1, -2, -2, -2}},
+    {"Acoustic Clarity", -0.1, 0.2, 0.45, 0.0, {-2, -1, 0, 0, 1, 2, 3, 4, 4, 3}},
+    {"Club Punch", 0.65, -0.15, 0.4, 0.08, {8, 7, 4, 1, -1, -2, 0, 2, 4, 5}},
+};
 
 double clampUnit(double value, double low, double high) {
     if (!(value >= low))
@@ -37,30 +103,150 @@ double Effects::trebleDb(double value) {
     return clampUnit(value, -1.0, 1.0) * kMaxShelfDb;
 }
 
+double Effects::midDb(double value) {
+    return clampUnit(value, -1.0, 1.0) * kMaxMidDb;
+}
+
+const double *Effects::bandHz() { return kBandHz; }
+
+QVariantList Effects::bandFrequencies() {
+    QVariantList list;
+    for (double hz : kBandHz)
+        list.append(hz);
+    return list;
+}
+
+double Effects::responseDb(double bass, double mid, double treble, double hz, const QVector<double> &bands) {
+    if (bands.size() == kBandCount) {
+        double total = 0;
+        for (int i = 0; i < kBandCount; ++i)
+            total += biquadDb(Band::Peaking, kBandHz[i], kBandQ, clampUnit(bands.at(i), -kMaxBandDb, kMaxBandDb), hz);
+        return total;
+    }
+    return biquadDb(Band::LowShelf, kBassHz, kShelfQ, bassDb(bass), hz)
+           + biquadDb(Band::Peaking, kMidHz, kMidQ, midDb(mid), hz)
+           + biquadDb(Band::HighShelf, kTrebleHz, kShelfQ, trebleDb(treble), hz);
+}
+
+QVariantList Effects::curve(int points) const {
+    QVariantList list;
+    points = qBound(2, points, 256);
+    for (int i = 0; i < points; ++i) {
+        const double hz = 20.0 * std::pow(1000.0, double(i) / (points - 1));
+        list.append(responseDb(m_bass, m_mid, m_treble, hz, m_advanced ? m_bands : QVector<double>()));
+    }
+    return list;
+}
+
+QStringList Effects::presets() {
+    QStringList names;
+    for (const auto &preset : kPresets)
+        names << QString::fromLatin1(preset.name);
+    return names;
+}
+
+bool Effects::presetValues(const QString &name, double &bass, double &mid, double &treble, double &reverb) {
+    for (const auto &preset : kPresets) {
+        if (name.compare(QLatin1String(preset.name), Qt::CaseInsensitive) != 0)
+            continue;
+        bass = preset.bass;
+        mid = preset.mid;
+        treble = preset.treble;
+        reverb = preset.reverb;
+        return true;
+    }
+    return false;
+}
+
+bool Effects::presetBands(const QString &name, QVector<double> &bands) {
+    for (const auto &preset : kPresets) {
+        if (name.compare(QLatin1String(preset.name), Qt::CaseInsensitive) != 0)
+            continue;
+        bands = QVector<double>(preset.bands, preset.bands + kBandCount);
+        return true;
+    }
+    return false;
+}
+
+// The preset the controls on show match: the ten bands in advanced mode, the three knobs otherwise.
+QString Effects::preset() const {
+    for (const auto &preset : kPresets) {
+        if (qAbs(preset.reverb - m_reverb) >= 0.005)
+            continue;
+        bool same = true;
+        if (m_advanced) {
+            for (int i = 0; i < kBandCount && same; ++i)
+                same = qAbs(preset.bands[i] - m_bands.at(i)) < 0.05;
+        } else {
+            same = qAbs(preset.bass - m_bass) < 0.005 && qAbs(preset.mid - m_mid) < 0.005
+                   && qAbs(preset.treble - m_treble) < 0.005;
+        }
+        if (same)
+            return QString::fromLatin1(preset.name);
+    }
+    return {};
+}
+
+void Effects::applyPreset(const QString &name) {
+    double bass, mid, treble, reverb;
+    if (!presetValues(name, bass, mid, treble, reverb))
+        return;
+    setBass(bass);
+    setMid(mid);
+    setTreble(treble);
+    setReverb(reverb);
+    QVector<double> bands;
+    if (presetBands(name, bands)) {
+        for (int i = 0; i < kBandCount; ++i)
+            setBand(i, bands.at(i));
+    }
+}
+
 QPair<double, double> Effects::mixGains(double reverb) {
     const double wet = clampUnit(reverb, 0.0, 1.0);
     // The dry signal ducks a little as the room grows so the level stays even.
     return {1.0 - 0.35 * wet, 0.9 * wet};
 }
 
-QString Effects::filterChainConfig(const QString &impulsePath, double bass, double treble, double reverb,
-                                   const QString &sinkName) {
+QString Effects::filterChainConfig(const QString &impulsePath, double bass, double mid, double treble, double reverb,
+                                   const QString &sinkName, const QVector<double> &bands) {
     const auto gains = mixGains(reverb);
+    // Advanced mode bypasses the three simple filters (0 dB) and drives the ten peaking bands instead.
+    const bool advanced = bands.size() == kBandCount;
+    auto bandGain = [&](int i) { return advanced ? clampUnit(bands.at(i), -kMaxBandDb, kMaxBandDb) : 0.0; };
     auto channel = [&](const QString &c) {
         return QStringLiteral(
                    "      { type = builtin name = bass%1 label = bq_lowshelf control = { \"Freq\" = 100.0 \"Q\" = 0.7 \"Gain\" = %2 } }\n"
+                   "      { type = builtin name = mid%1 label = bq_peaking control = { \"Freq\" = 1000.0 \"Q\" = 0.9 \"Gain\" = %7 } }\n"
                    "      { type = builtin name = treb%1 label = bq_highshelf control = { \"Freq\" = 8000.0 \"Q\" = 0.7 \"Gain\" = %3 } }\n"
                    "      { type = builtin name = conv%1 label = convolver config = { filename = \"%4\" } }\n"
                    "      { type = builtin name = mix%1 label = mixer control = { \"Gain 1\" = %5 \"Gain 2\" = %6 } }\n")
-            .arg(c, num(bassDb(bass)), num(trebleDb(treble)), impulsePath, num(gains.first), num(gains.second));
+            .arg(c, num(advanced ? 0 : bassDb(bass)), num(advanced ? 0 : trebleDb(treble)), impulsePath, num(gains.first),
+                 num(gains.second), num(advanced ? 0 : midDb(mid)));
+    };
+    // The ten bands are always in the graph (at 0 dB when unused): a props update can change gains, never the shape.
+    auto eqNodes = [&](const QString &c) {
+        QString nodes;
+        for (int i = 0; i < kBandCount; ++i)
+            nodes += QStringLiteral("      { type = builtin name = eq%1_%2 label = bq_peaking control = { \"Freq\" = %3 \"Q\" = %4 \"Gain\" = %5 } }\n")
+                         .arg(i).arg(c).arg(num(kBandHz[i]), num(kBandQ), num(bandGain(i)));
+        return nodes;
     };
     auto links = [](const QString &c) {
         return QStringLiteral(
-                   "      { output = \"bass%1:Out\" input = \"treb%1:In\" }\n"
-                   "      { output = \"treb%1:Out\" input = \"conv%1:In\" }\n"
-                   "      { output = \"treb%1:Out\" input = \"mix%1:In 1\" }\n"
+                   "      { output = \"bass%1:Out\" input = \"mid%1:In\" }\n"
+                   "      { output = \"mid%1:Out\" input = \"treb%1:In\" }\n"
+                   "      { output = \"treb%1:Out\" input = \"eq0_%1:In\" }\n"
+                   "      { output = \"eq9_%1:Out\" input = \"conv%1:In\" }\n"
+                   "      { output = \"eq9_%1:Out\" input = \"mix%1:In 1\" }\n"
                    "      { output = \"conv%1:Out\" input = \"mix%1:In 2\" }\n")
-            .arg(c);
+            .arg(c)
+        + [&] {
+              QString chain;
+              for (int i = 0; i < kBandCount - 1; ++i)
+                  chain += QStringLiteral("      { output = \"eq%1_%3:Out\" input = \"eq%2_%3:In\" }\n").arg(i).arg(i + 1).arg(c);
+              return chain;
+          }();
     };
     return QStringLiteral(
                "context.properties = { log.level = 1 }\n"
@@ -74,7 +260,7 @@ QString Effects::filterChainConfig(const QString &impulsePath, double bass, doub
                "      node.description = \"Click Effects\"\n"
                "      media.name = \"Click Effects\"\n"
                "      filter.graph = {\n"
-               "        nodes = [\n%1%2        ]\n"
+               "        nodes = [\n%1%2%6%7        ]\n"
                "        links = [\n%3%4        ]\n"
                "        inputs = [ \"bassL:In\" \"bassR:In\" ]\n"
                "        outputs = [ \"mixL:Out\" \"mixR:Out\" ]\n"
@@ -86,15 +272,19 @@ QString Effects::filterChainConfig(const QString &impulsePath, double bass, doub
                "  } }\n"
                "]\n")
         .arg(channel(QStringLiteral("L")), channel(QStringLiteral("R")), links(QStringLiteral("L")),
-             links(QStringLiteral("R")), sinkName);
+             links(QStringLiteral("R")), sinkName, eqNodes(QStringLiteral("L")), eqNodes(QStringLiteral("R")));
 }
 
-QString Effects::propsPayload(double bass, double treble, double reverb) {
+QString Effects::propsPayload(double bass, double mid, double treble, double reverb, const QVector<double> &bands) {
     const auto gains = mixGains(reverb);
+    const bool advanced = bands.size() == kBandCount;
     QStringList items;
     for (const QString c : {QStringLiteral("L"), QStringLiteral("R")}) {
-        items << QStringLiteral("\"bass%1:Gain\" %2").arg(c, num(bassDb(bass)));
-        items << QStringLiteral("\"treb%1:Gain\" %2").arg(c, num(trebleDb(treble)));
+        items << QStringLiteral("\"bass%1:Gain\" %2").arg(c, num(advanced ? 0 : bassDb(bass)));
+        items << QStringLiteral("\"mid%1:Gain\" %2").arg(c, num(advanced ? 0 : midDb(mid)));
+        items << QStringLiteral("\"treb%1:Gain\" %2").arg(c, num(advanced ? 0 : trebleDb(treble)));
+        for (int i = 0; i < kBandCount; ++i)
+            items << QStringLiteral("\"eq%1_%2:Gain\" %3").arg(i).arg(c, num(advanced ? clampUnit(bands.at(i), -kMaxBandDb, kMaxBandDb) : 0.0));
         items << QStringLiteral("\"mix%1:Gain 1\" %2").arg(c, num(gains.first));
         items << QStringLiteral("\"mix%1:Gain 2\" %2").arg(c, num(gains.second));
     }
@@ -193,9 +383,14 @@ Effects::Effects(const QString &settingsPath, QObject *parent)
     if (!m_settingsPath.isEmpty()) {
         QSettings settings(m_settingsPath, QSettings::IniFormat);
         m_bass = clampUnit(settings.value(QStringLiteral("effects/bass"), 0.0).toDouble(), -1.0, 1.0);
+        m_mid = clampUnit(settings.value(QStringLiteral("effects/mid"), 0.0).toDouble(), -1.0, 1.0);
         m_treble = clampUnit(settings.value(QStringLiteral("effects/treble"), 0.0).toDouble(), -1.0, 1.0);
         m_reverb = clampUnit(settings.value(QStringLiteral("effects/reverb"), 0.0).toDouble(), 0.0, 1.0);
         wasEnabled = settings.value(QStringLiteral("effects/enabled"), false).toBool();
+        m_advanced = settings.value(QStringLiteral("effects/advanced"), false).toBool();
+        const QStringList saved = settings.value(QStringLiteral("effects/bands")).toStringList();
+        for (int i = 0; i < kBandCount && i < saved.size(); ++i)
+            m_bands[i] = clampUnit(saved.at(i).toDouble(), -kMaxBandDb, kMaxBandDb);
     }
 
     m_probe.setInterval(300);
@@ -228,9 +423,50 @@ void Effects::save() {
         return;
     QSettings settings(m_settingsPath, QSettings::IniFormat);
     settings.setValue(QStringLiteral("effects/bass"), m_bass);
+    settings.setValue(QStringLiteral("effects/mid"), m_mid);
     settings.setValue(QStringLiteral("effects/treble"), m_treble);
     settings.setValue(QStringLiteral("effects/reverb"), m_reverb);
     settings.setValue(QStringLiteral("effects/enabled"), m_enabled);
+    settings.setValue(QStringLiteral("effects/advanced"), m_advanced);
+    QStringList bands;
+    for (double db : m_bands)
+        bands << QString::number(db, 'f', 2);
+    settings.setValue(QStringLiteral("effects/bands"), bands);
+}
+
+void Effects::setAdvanced(bool on) {
+    if (on == m_advanced)
+        return;
+    m_advanced = on;
+    emit advancedChanged();
+    emit presetChanged();
+    save();
+    m_debounce.start();
+}
+
+QVariantList Effects::bandList() const {
+    QVariantList list;
+    for (double db : m_bands)
+        list.append(db);
+    return list;
+}
+
+double Effects::band(int index) const {
+    return index >= 0 && index < kBandCount ? m_bands.at(index) : 0.0;
+}
+
+void Effects::setBand(int index, double db) {
+    if (index < 0 || index >= kBandCount)
+        return;
+    db = clampUnit(db, -kMaxBandDb, kMaxBandDb);
+    if (qAbs(m_bands.at(index) - db) < 0.001)
+        return;
+    m_bands[index] = db;
+    emit bandsChanged();
+    emit presetChanged();
+    save();
+    if (m_advanced)
+        m_debounce.start();
 }
 
 void Effects::setBass(double value) {
@@ -239,6 +475,18 @@ void Effects::setBass(double value) {
         return;
     m_bass = value;
     emit bassChanged();
+    emit presetChanged();
+    save();
+    m_debounce.start();
+}
+
+void Effects::setMid(double value) {
+    value = clampUnit(value, -1.0, 1.0);
+    if (qFuzzyCompare(m_mid + 2.0, value + 2.0))
+        return;
+    m_mid = value;
+    emit midChanged();
+    emit presetChanged();
     save();
     m_debounce.start();
 }
@@ -249,6 +497,7 @@ void Effects::setTreble(double value) {
         return;
     m_treble = value;
     emit trebleChanged();
+    emit presetChanged();
     save();
     m_debounce.start();
 }
@@ -259,14 +508,27 @@ void Effects::setReverb(double value) {
         return;
     m_reverb = value;
     emit reverbChanged();
+    emit presetChanged();
     save();
     m_debounce.start();
 }
 
 void Effects::reset() {
     setBass(0);
+    setMid(0);
     setTreble(0);
     setReverb(0);
+    for (int i = 0; i < kBandCount; ++i)
+        setBand(i, 0);
+}
+
+void Effects::applyShape(const QVariantList &bands, double bass, double mid, double treble, double reverb) {
+    setBass(bass);
+    setMid(mid);
+    setTreble(treble);
+    setReverb(reverb);
+    for (int i = 0; i < kBandCount && i < bands.size(); ++i)
+        setBand(i, bands.at(i).toDouble());
 }
 
 void Effects::setEnabled(bool on) {
@@ -321,7 +583,7 @@ void Effects::startGraph() {
     const QString confPath = dir + QStringLiteral("/click-fx.conf");
     QFile conf(confPath);
     if (!conf.open(QIODevice::WriteOnly | QIODevice::Truncate)
-        || conf.write(filterChainConfig(impulse, m_bass, m_treble, m_reverb, m_sinkName).toUtf8()) < 0) {
+        || conf.write(filterChainConfig(impulse, m_bass, m_mid, m_treble, m_reverb, m_sinkName, m_advanced ? m_bands : QVector<double>()).toUtf8()) < 0) {
         fail(QStringLiteral("could not write the effects graph"));
         return;
     }
@@ -406,7 +668,7 @@ void Effects::applyParams() {
     }
     m_applying = true;
     run(QStringLiteral("pw-cli"),
-        {QStringLiteral("s"), QString::number(m_nodeId), QStringLiteral("Props"), propsPayload(m_bass, m_treble, m_reverb)},
+        {QStringLiteral("s"), QString::number(m_nodeId), QStringLiteral("Props"), propsPayload(m_bass, m_mid, m_treble, m_reverb, m_advanced ? m_bands : QVector<double>())},
         [this](int, const QByteArray &) {
             m_applying = false;
             if (m_dirty) {

@@ -3,3 +3,4 @@
 /pkgbuild/src/
 *.pkg.tar.*
 /collab/logs/
+/.claude/settings.local.json

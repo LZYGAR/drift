@@ -5,6 +5,7 @@ pkgdesc='A beautiful mini player for Apple Music'
 arch=('x86_64' 'aarch64')
 license=('MIT')
 depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'qt6-webchannel' 'qt6-wayland')
+optdepends=('qt6-svg: tray icon' 'pipewire: EQ and reverb' 'libpulse: following the music (parec)')
 makedepends=('gcc' 'make' 'qt6-base' 'qt6-declarative' 'qt6-webengine' 'qt6-webchannel')
 source=()
 sha256sums=()

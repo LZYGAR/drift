@@ -7,14 +7,20 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QtQml>
 #include <QUrl>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
+#include "audiolevels.h"
 #include "backend.h"
+#include "commands.h"
+#include "desktop.h"
 #include "effects.h"
 #include "mpris.h"
 #include "theme.h"
 #include "translator.h"
+#include "wavebars.h"
+#include "waveform.h"
 
 int main(int argc, char *argv[]) {
     // Set before the web engine starts. Apple's sign-in hangs when a popup is
@@ -37,6 +43,7 @@ int main(int argc, char *argv[]) {
     QtWebEngineQuick::initialize();
 
     QGuiApplication app(argc, argv);
+    qmlRegisterType<WaveBars>("ClickNative", 1, 0, "WaveBars");
     app.setApplicationName("click");
     app.setApplicationDisplayName("Music Player");
     app.setApplicationVersion("0.1.0");
@@ -60,6 +67,15 @@ int main(int argc, char *argv[]) {
     QDir().mkpath(backend.dataPath());
     Effects effects(preview ? QString() : backend.dataPath() + "/effects.conf");
 
+    Waveform waveform;
+    // Listens to this app's own playback so the animation can follow the music.
+    // Follows you across desktops on Hyprland (see desktop.h); inert elsewhere, in previews and offscreen.
+    Desktop desktop(preview ? QString() : backend.dataPath() + "/prefs.conf", (!preview || qEnvironmentVariableIsSet("CLICK_DESKTOP_TEST")) && app.platformName() != QLatin1String("offscreen"));
+    AudioLevels audio(preview);
+    if (!preview)
+        audio.setPrefsPath(backend.dataPath() + "/prefs.conf");
+    Commands commands;
+
     QQmlApplicationEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/"));
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
@@ -68,7 +84,11 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("backend", &backend);
     engine.rootContext()->setContextProperty("effects", &effects);
-    engine.load(QUrl("qrc:/Main.qml"));
+    engine.rootContext()->setContextProperty("desktop", &desktop);
+    engine.rootContext()->setContextProperty("audio", &audio);
+    engine.rootContext()->setContextProperty("waveform", &waveform);
+    engine.rootContext()->setContextProperty("commands", &commands);
+    engine.load(QUrl("qrc:/MainWindow.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;
 
