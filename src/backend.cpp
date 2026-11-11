@@ -145,7 +145,10 @@ Backend::Backend(bool preview, QObject *parent)
         m_autoSimilar = prefs.value(QStringLiteral("autoplay/similar"), true).toBool();
         m_useTaste = prefs.value(QStringLiteral("taste/use"), true).toBool();
         m_history = prefs.value(QStringLiteral("search/history")).toStringList();
+        m_introEnabled = prefs.value(QStringLiteral("ui/intro"), true).toBool();
     }
+    // A page that never answers must not keep the window hidden: after twelve seconds it is treated as known.
+    QTimer::singleShot(12000, this, [this] { markSessionKnown(); });
     // A search is remembered once the typing settles, so half-typed words do not pile up.
     m_historyTimer.setSingleShot(true);
     m_historyTimer.setInterval(1600);
@@ -185,6 +188,7 @@ Backend::Backend(bool preview, QObject *parent)
     }
 
     if (m_preview) {
+        m_sessionKnown = true;
         m_signedIn = true;
         m_playing = true;
         m_track = QStringLiteral("Night Drive");
@@ -1353,6 +1357,24 @@ void Backend::openPlayer() {
     showNowPlaying();
 }
 
+void Backend::markSessionKnown() {
+    if (m_sessionKnown)
+        return;
+    m_sessionKnown = true;
+    emit sessionChanged();
+}
+
+void Backend::setIntroEnabled(bool on) {
+    if (on == m_introEnabled)
+        return;
+    m_introEnabled = on;
+    if (!m_preview) {
+        QSettings prefs(m_dataPath + QStringLiteral("/prefs.conf"), QSettings::IniFormat);
+        prefs.setValue(QStringLiteral("ui/intro"), on);
+    }
+    emit introChanged();
+}
+
 void Backend::rememberSearch(const QString &text) {
     const QString clean = text.simplified();
     if (clean.size() < 2 || m_preview)
@@ -1634,8 +1656,10 @@ void Backend::ingest(const QString &json) {
         field = value.toDouble();
         playback = true;
     };
-    if (object.contains(QStringLiteral("authorized")))
+    if (object.contains(QStringLiteral("authorized"))) {
         takeBool("authorized", m_signedIn);
+        markSessionKnown();
+    }
     takeBool("playing", m_playing);
     const QString previousTitle = m_track;
     if (object.contains(QStringLiteral("title"))) {

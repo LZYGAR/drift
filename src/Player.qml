@@ -52,7 +52,8 @@ Item {
     property real depth: anySheet ? 1 : 0
     Behavior on depth { SpringAnimation { spring: Glass.springPanel; damping: 0.42; epsilon: 0.004 } }
     // The welcome screen owns the window until they sign in.
-    readonly property bool signedOut: !backend.signedIn && !backend.signingIn
+    // Not before Apple Music has answered: no flash of the login page while it is still loading.
+    readonly property bool signedOut: !backend.signedIn && !backend.signingIn && backend.sessionKnown
     // True while a text field in an overlay owns the keyboard.
     readonly property bool overlayTyping: paletteOpen
 
@@ -1746,6 +1747,12 @@ Item {
                 note: backend.useTaste ? backend.tasteSummary : qsTr("Off. Nothing is remembered.")
                 checked: backend.useTaste
                 onToggled: backend.useTaste = !backend.useTaste
+            }
+            SettingRow {
+                title: qsTr("Opening animation")
+                note: backend.introEnabled ? qsTr("The word draws itself as Drift opens") : qsTr("Off. Drift opens straight to your music")
+                checked: backend.introEnabled
+                onToggled: backend.introEnabled = !backend.introEnabled
             }
             SettingRow {
                 visible: root.showFollow

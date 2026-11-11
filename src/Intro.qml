@@ -11,7 +11,8 @@ Item {
 
     property bool signedIn: false
     property bool busy: false          // the sign-in window is open
-    property real patience: 5
+    property real patience: 15
+    property bool known: true          // Apple Music has said whether you are signed in
     property real still: -1
     // Where the word rests on the welcome screen.
     property real welcomeY: 70
@@ -93,7 +94,7 @@ Item {
         repeat: true
         onTriggered: {
             intro.waited += 0.1
-            if (intro.signedIn || (!intro.busy && intro.waited >= intro.patience)) {
+            if (intro.signedIn || (intro.known && !intro.busy) || (!intro.busy && intro.waited >= intro.patience)) {
                 stop()
                 intro.goingHome = !intro.signedIn
                 if (!intro.goingHome) melt.start()

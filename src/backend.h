@@ -37,6 +37,10 @@ class Backend : public QObject {
     Q_PROPERTY(bool previewMini READ previewMini CONSTANT)
     Q_PROPERTY(bool signingIn READ signingIn NOTIFY sessionChanged)
     Q_PROPERTY(bool signedIn READ signedIn NOTIFY sessionChanged)
+    // True once Apple Music's page has said whether you are signed in (or after a while, so a page that never loads
+    // does not keep the window hidden or the opening waiting for ever).
+    Q_PROPERTY(bool sessionKnown READ sessionKnown NOTIFY sessionChanged)
+    Q_PROPERTY(bool introEnabled READ introEnabled WRITE setIntroEnabled NOTIFY introChanged)
     Q_PROPERTY(QString status READ status NOTIFY sessionChanged)
     Q_PROPERTY(QString title READ title NOTIFY screenChanged)
     Q_PROPERTY(QString kind READ kind NOTIFY screenChanged)
@@ -102,6 +106,9 @@ public:
     bool previewMini() const { return m_preview && qEnvironmentVariableIsSet("CLICK_PREVIEW_MINI"); }
     bool signingIn() const { return m_signingIn; }
     bool signedIn() const { return m_signedIn; }
+    bool sessionKnown() const { return m_sessionKnown; }
+    bool introEnabled() const { return m_introEnabled; }
+    void setIntroEnabled(bool on);
     QString status() const { return m_status; }
     QString title() const;
     QString kind() const;
@@ -244,6 +251,7 @@ signals:
     void likedChanged();
     void similarChanged();
     void historyChanged();
+    void introChanged();
     void tasteChanged();
     void artColorChanged();
 
@@ -351,6 +359,9 @@ private:
     Taste *m_taste = nullptr;
     Stats *m_stats = nullptr;
     QStringList m_history;
+    bool m_sessionKnown = false;
+    bool m_introEnabled = true;
+    void markSessionKnown();
     QTimer m_historyTimer;
     QString m_historyPending;
     // What was heard of this song so far (for the play count), and whether it has been counted.

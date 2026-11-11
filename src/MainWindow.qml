@@ -52,7 +52,8 @@ ApplicationWindow {
     minimumHeight: cinema ? 0 : shownHeight
     maximumWidth: cinema ? 16777215 : 360
     maximumHeight: cinema ? 16777215 : shownHeight
-    visible: true
+    // With the opening off, a signed-in app stays hidden until it can show the main page, never the login screen.
+    visible: backend.preview || backend.introEnabled || backend.sessionKnown
     title: "Drift"
     color: Glass.base
     flags: Qt.Window | Qt.FramelessWindowHint | (staysOnTop ? Qt.WindowStaysOnTopHint : 0)
@@ -482,9 +483,10 @@ ApplicationWindow {
         id: intro
         anchors.fill: parent
         z: 60
-        active: !win.mini && (!backend.preview || backend.previewPanel === "intro" || backend.previewPanel === "intro-out")
+        active: backend.introEnabled && !win.mini && (!backend.preview || backend.previewPanel === "intro" || backend.previewPanel === "intro-out")
         signedIn: backend.signedIn
         busy: backend.signingIn
+        known: backend.sessionKnown
         still: backend.previewPanel === "intro" ? 0.78 : backend.previewPanel === "intro-out" ? 1 : -1
         welcomeY: 70
         welcomeWidth: 220
