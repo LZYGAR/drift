@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 
-// The opening: the word "drift" draws itself over liquid colour, glows, then either dissolves into the player (you
+// The opening: the word "drift" draws itself in frosted black-and-white glass, glows, then either dissolves into the player (you
 // are signed in) or glides up to its place on the welcome screen (you are not).
 //
 // It waits for the app to know which: if Apple Music has not answered after `patience` seconds, it is the welcome.
@@ -35,16 +35,16 @@ Item {
     Rectangle {
         id: veil
         anchors.fill: parent
-        color: "#0d0a12"
+        color: "#050506"
         opacity: 1 - intro.leave
     }
     // a soft vignette of colour behind the word
     LiquidField {
         anchors.fill: parent
         running: intro.visible
-        primary: "#ff6fae"
-        secondary: "#6f8dff"
-        ambient: "#0d0a12"
+        primary: "#ffffff"
+        secondary: "#8d8d95"
+        ambient: "#050506"
         opacity: 0.55 * (intro.goingHome ? 1 - intro.leave : (1 - intro.leave)) * Math.min(1, intro.drawn * 1.5)
     }
 
@@ -66,7 +66,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         y: word.y + word.height + 18
         text: intro.busy ? qsTr("Signing in…") : qsTr("your music, drifting")
-        color: "#b9aed0"
+        color: "#a8a8b0"
         font.family: Glass.font
         font.pixelSize: 14
         font.letterSpacing: 3

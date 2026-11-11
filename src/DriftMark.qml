@@ -15,10 +15,10 @@ Item {
     property real progress: 1
     property bool running: true
     property real glow: 1
-    // Brand colours: not the cover's, so the name looks the same whatever is playing.
-    property color inkA: "#ff6fae"
-    property color inkB: "#6f8dff"
-    property color inkC: "#2b1750"
+    // Black and white: frosted glass with a travelling sheen.
+    property color inkA: "#ffffff"
+    property color inkB: "#9d9da6"
+    property color inkC: "#3a3a40"
 
     readonly property real u: markWidth / 300
     width: markWidth
@@ -65,6 +65,7 @@ Item {
         anchors.fill: parent
         visible: false
         layer.enabled: true
+        layer.smooth: true
         Rectangle {
             id: tide
             width: mark.width * 2
@@ -73,9 +74,9 @@ Item {
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: mark.inkA }
-                GradientStop { position: 0.25; color: "#a56bff" }
+                GradientStop { position: 0.25; color: "#e4e4e8" }
                 GradientStop { position: 0.5; color: mark.inkB }
-                GradientStop { position: 0.75; color: "#a56bff" }
+                GradientStop { position: 0.75; color: "#e4e4e8" }
                 GradientStop { position: 1.0; color: mark.inkA }
             }
         }
@@ -83,9 +84,9 @@ Item {
         Rectangle {
             anchors.fill: parent
             gradient: Gradient {
-                GradientStop { position: 0; color: "#40ffffff" }
-                GradientStop { position: 0.6; color: "transparent" }
-                GradientStop { position: 1; color: "#33000000" }
+                GradientStop { position: 0; color: "#66ffffff" }
+                GradientStop { position: 0.5; color: "transparent" }
+                GradientStop { position: 1; color: "#22000000" }
             }
         }
         Rectangle {
@@ -111,7 +112,7 @@ Item {
         visible: false
         layer.enabled: true
         layer.smooth: true
-        layer.samples: 4
+        layer.samples: 8
 
         Repeater {
             model: mark.glyphs
@@ -134,6 +135,7 @@ Item {
                         // One long dash as long as the stroke; sliding it draws the stroke on.
                         readonly property real dash: modelData.len * 1.08 * mark.u / sw
                         opacity: letter.p > 0 ? 1 : 0
+                        antialiasing: true
                         preferredRendererType: Shape.CurveRenderer
                         ShapePath {
                             strokeColor: "white"
@@ -141,7 +143,7 @@ Item {
                             fillColor: "transparent"
                             capStyle: ShapePath.RoundCap
                             joinStyle: ShapePath.RoundJoin
-                            strokeStyle: ShapePath.DashLine
+                            strokeStyle: letter.p >= 1 ? ShapePath.SolidLine : ShapePath.DashLine
                             dashPattern: [seg.dash, 400]
                             dashOffset: seg.dash * (1 - letter.p)
                             PathSvg { path: mark.scaled(seg.modelData.d) }
@@ -175,5 +177,7 @@ Item {
         source: ink
         maskEnabled: true
         maskSource: letters
+        maskThresholdMin: 0.3
+        maskSpreadAtMin: 0.25
     }
 }

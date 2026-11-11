@@ -858,7 +858,7 @@ Item {
                     anchors.fill: parent
                     radius: 14
                     color: Glass.fill
-                    border.color: search.activeFocus ? "#80fff6ee" : Glass.specular
+                    border.color: search.activeFocus ? "#80ffffff" : Glass.specular
                     border.width: 1
                 }
                 Glyph {
@@ -1165,7 +1165,7 @@ Item {
                         height: 48
                         radius: 16
                         color: Glass.fill
-                        border.color: mixInput.activeFocus ? "#80fff6ee" : Glass.specular
+                        border.color: mixInput.activeFocus ? "#80ffffff" : Glass.specular
                         border.width: 1
                         Text {
                             x: 16
@@ -2237,7 +2237,7 @@ Item {
         height: 38
         width: toastText.implicitWidth + 36
         radius: height / 2
-        color: "#e6fff6ee"
+        color: "#e6f5f5f7"
         opacity: backend.toast !== "" ? 1 : 0
         visible: opacity > 0.01
         scale: backend.toast !== "" ? 1 : 0.8

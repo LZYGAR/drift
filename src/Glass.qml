@@ -6,18 +6,18 @@ import QtQuick
 QtObject {
     id: glass
 
-    // ---- text and surfaces (warm white on dark) ----
-    readonly property color ink: "#fff6ee"          // primary text and icons
-    readonly property color mute: "#a6f8e7dc"       // secondary text, 65%
-    readonly property color faint: "#5cf8e7dc"      // hints and times, 36%
-    readonly property color inkText: "#14110c"      // text on an ink-filled button
-    readonly property color base: "#100d0a"         // behind everything
-    readonly property color fill: "#1ff8e7dc"       // glass fill at rest, 12%
-    readonly property color fillHover: "#33f8e7dc"  // glass fill under the pointer, 20%
+    // ---- text and surfaces (neutral white on black) ----
+    readonly property color ink: "#f5f5f7"          // primary text and icons
+    readonly property color mute: "#a6f2f2f5"       // secondary text, 65%
+    readonly property color faint: "#5cf2f2f5"      // hints and times, 36%
+    readonly property color inkText: "#0c0c0d"      // text on an ink-filled button
+    readonly property color base: "#0b0b0c"         // behind everything
+    readonly property color fill: "#1fffffff"       // glass fill at rest, 12%
+    readonly property color fillHover: "#33ffffff"  // glass fill under the pointer, 20%
     readonly property color rail: "#38ffffff"       // unplayed waveform and slider rails, 22%
     readonly property color specular: "#24ffffff"   // 1px edge highlight, rgba(255,255,255,0.14)
     readonly property color sheen: "#1affffff"      // top-edge gloss on panels, 10%
-    readonly property color panelShade: "#73140f0c" // a light dark tint over the blur (45%), so text stays readable
+    readonly property color panelShade: "#73101010" // a light dark tint over the blur (45%), so text stays readable
     readonly property color glassMilk: "#14ffffff"  // the glass itself: white at 8%
     // The rim: lit from the top-left, rgba(255,255,255,0.22) falling to 0.04 at the bottom-right.
     readonly property color rimBright: "#38ffffff"
@@ -91,11 +91,10 @@ QtObject {
 
     // ---- colour that follows the cover ----
     readonly property color themeAccent: theme.accent
-    property color accent: backend.hasArtColor ? backend.artColor : themeAccent
-    property color secondary: backend.hasArtColor ? backend.artSecondary
-        : Qt.hsla((themeAccent.hslHue + 0.11) % 1, themeAccent.hslSaturation * 0.8, 0.42, 1)
-    property color ambient: backend.hasArtColor ? backend.artAmbient
-        : Qt.hsla(Math.max(0, themeAccent.hslHue), 0.35, 0.13, 1)
+    // With nothing playing the app is black and white; a song brings its cover's colours in.
+    property color accent: backend.hasArtColor ? backend.artColor : "#a9a9b0"
+    property color secondary: backend.hasArtColor ? backend.artSecondary : "#45454a"
+    property color ambient: backend.hasArtColor ? backend.artAmbient : "#0e0e10"
     Behavior on accent { ColorAnimation { duration: glass.colorShift; easing.type: Easing.InOutSine } }
     Behavior on secondary { ColorAnimation { duration: glass.colorShift; easing.type: Easing.InOutSine } }
     Behavior on ambient { ColorAnimation { duration: glass.colorShift; easing.type: Easing.InOutSine } }
