@@ -10,6 +10,7 @@ You need an Apple Music subscription and a network connection. Playback is the
 regular stream, not Lossless, and songs are not kept for offline listening.
 
 <p align="center">
+  <img src="docs/intro.png" width="300" alt="The opening: the word drift in liquid glass">
   <img src="docs/player.png" width="300" alt="Now playing: a colour mesh from the cover and a waveform time bar">
   <img src="docs/heart.png" width="300" alt="The heart, with its 1 to 10 scale open">
 </p>
@@ -104,7 +105,8 @@ regular stream, not Lossless, and songs are not kept for offline listening.
   the song, the window remembers its place, and it can stay on top.
 
 <p align="center">
-  <img src="docs/styles.png" width="300" alt="Options: animation, autoplay, taste and desktops">
+  <img src="docs/styles.png" width="300" alt="Settings: animation, autoplay, taste, opening animation and desktops">
+  <img src="docs/wrapped.png" width="300" alt="Wrapped: your listening time, streak, top songs and artists">
   <img src="docs/sound.png" width="300" alt="The Sound sheet: EQ curve, reverb, presets and animation delay">
 </p>
 <p align="center">
