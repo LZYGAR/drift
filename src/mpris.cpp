@@ -15,7 +15,7 @@
 namespace {
 
 const QString kObjectPath = QStringLiteral("/org/mpris/MediaPlayer2");
-const QString kService = QStringLiteral("org.mpris.MediaPlayer2.click");
+const QString kService = QStringLiteral("org.mpris.MediaPlayer2.drift");
 const QString kPlayer = QStringLiteral("org.mpris.MediaPlayer2.Player");
 const QString kProperties = QStringLiteral("org.freedesktop.DBus.Properties");
 
@@ -118,8 +118,8 @@ public:
     bool canQuit() const { return true; }
     bool canRaise() const { return true; }
     bool hasTrackList() const { return false; }
-    QString identity() const { return QStringLiteral("Click"); }
-    QString desktopEntry() const { return QStringLiteral("click"); }
+    QString identity() const { return QStringLiteral("Drift"); }
+    QString desktopEntry() const { return QStringLiteral("drift"); }
     QStringList supportedUriSchemes() const { return {}; }
     QStringList supportedMimeTypes() const { return {}; }
 
@@ -219,7 +219,7 @@ bool Mpris::registerService() {
     }
     if (!bus.registerService(kService)) {
         const QString message = bus.lastError().isValid() ? bus.lastError().message()
-                                                          : QStringLiteral("could not own org.mpris.MediaPlayer2.click");
+                                                          : QStringLiteral("could not own org.mpris.MediaPlayer2.drift");
         qWarning("MPRIS: %s", qPrintable(message));
         bus.unregisterObject(kObjectPath);
         return false;

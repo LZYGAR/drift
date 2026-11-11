@@ -887,7 +887,7 @@ private slots:
         QVERIFY(!Mixer::parse("no json here", name, songs));
         QVERIFY(!Mixer::parse("{\"name\":\"x\",\"songs\":[]}", name, songs));
         QVERIFY(Mixer::parse("{\"songs\":[{\"title\":\"A\",\"artist\":\"B\"}]}", name, songs));
-        QCOMPARE(name, QString("Click Mix"));
+        QCOMPARE(name, QString("Drift Mix"));
     }
 
     void mixerKeepsTheRequestShortAndInTheQuotes()

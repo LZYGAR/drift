@@ -1,6 +1,7 @@
-// Click — a click-wheel player for Apple Music.
+// Drift: an Apple Music player.
 
 #include <QFile>
+#include <QFileInfo>
 #include <QDir>
 #include <QGuiApplication>
 #include <QIcon>
@@ -44,14 +45,32 @@ int main(int argc, char *argv[]) {
 
     QGuiApplication app(argc, argv);
     qmlRegisterType<WaveBars>("ClickNative", 1, 0, "WaveBars");
-    app.setApplicationName("click");
-    app.setApplicationDisplayName("Music Player");
+    app.setApplicationName("drift");
+    app.setApplicationDisplayName("Drift");
+
+    // The app used to be called "click". Its settings, listening stats, taste and Apple Music sign-in move to the new
+    // folders once, so nothing is lost by the rename. (Only when the new folder does not exist yet.)
+    {
+        const QString home = QDir::homePath();
+        const QStringList bases{home + QStringLiteral("/.local/share"), home + QStringLiteral("/.cache"), home + QStringLiteral("/.config")};
+        for (const QString &base : bases) {
+            const QString from = base + QStringLiteral("/click");
+            const QString to = base + QStringLiteral("/drift");
+            if (QFileInfo::exists(from) && !QFileInfo::exists(to))
+                QDir().rename(from, to);
+            // The web profile (where the sign-in lives) is stored under its own name.
+            const QString oldProfile = to + QStringLiteral("/QtWebEngine/click");
+            const QString newProfile = to + QStringLiteral("/QtWebEngine/drift");
+            if (QFileInfo::exists(oldProfile) && !QFileInfo::exists(newProfile))
+                QDir().rename(oldProfile, newProfile);
+        }
+    }
     app.setApplicationVersion("0.1.0");
 
-    // Matches the window to click.desktop, so the compositor and the launcher
+    // Matches the window to drift.desktop, so the compositor and the launcher
     // pick up the installed icon.
-    app.setDesktopFileName("click");
-    app.setWindowIcon(QIcon::fromTheme("click"));
+    app.setDesktopFileName("drift");
+    app.setWindowIcon(QIcon::fromTheme("drift"));
 
     QQuickStyle::setStyle("Material");
 

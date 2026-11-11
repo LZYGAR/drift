@@ -187,7 +187,7 @@ test("only the person's own playlists are offered, never Apple's, and a song can
   const calls = [];
   const lib = [
     { id: "p.mine", type: "library-playlists", attributes: { name: "Gym", canEdit: true, hasCatalog: false, dateAdded: "2026-02-01" } },
-    { id: "p.newer", type: "library-playlists", attributes: { name: "Night", canEdit: true, dateAdded: "2026-05-01", description: { standard: "Made in Click with Grok" } } },
+    { id: "p.newer", type: "library-playlists", attributes: { name: "Night", canEdit: true, dateAdded: "2026-05-01", description: { standard: "Made in Drift with Grok" } } },
     { id: "p.apple", type: "library-playlists", attributes: { name: "Chill Mix", canEdit: false, hasCatalog: true } },
     { id: "p.added", type: "library-playlists", attributes: { name: "Today's Hits", hasCatalog: true } },
     { id: "pl.editorial", type: "playlists", attributes: { name: "Algorithmic Mix" } },

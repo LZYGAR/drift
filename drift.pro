@@ -1,7 +1,7 @@
 QT += core gui network qml quick quickcontrols2 dbus webenginequick webchannel
 
 CONFIG += c++17 release
-TARGET = click
+TARGET = drift
 TEMPLATE = app
 
 HEADERS += \

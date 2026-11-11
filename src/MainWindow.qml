@@ -53,7 +53,7 @@ ApplicationWindow {
     maximumWidth: cinema ? 16777215 : 360
     maximumHeight: cinema ? 16777215 : shownHeight
     visible: true
-    title: "Music Player"
+    title: "Drift"
     color: Glass.base
     flags: Qt.Window | Qt.FramelessWindowHint | (staysOnTop ? Qt.WindowStaysOnTopHint : 0)
 
@@ -137,7 +137,7 @@ ApplicationWindow {
     Settings {
         id: windowSettings
         // Preview grabs an offscreen frame and must not rewrite the saved window.
-        location: "file://" + (backend.preview ? "/tmp/click-window-preview.conf" : backend.dataPath + "/window.conf")
+        location: "file://" + (backend.preview ? "/tmp/drift-window-preview.conf" : backend.dataPath + "/window.conf")
         category: "window"
         property bool staysOnTop: false
         property bool mini: false
@@ -257,7 +257,7 @@ ApplicationWindow {
 
             WebEngineProfile {
                 id: musicProfile
-                storageName: "click"
+                storageName: "drift"
                 persistentStoragePath: backend.dataPath + "/web"
                 cachePath: backend.dataPath + "/cache"
                 offTheRecord: false
@@ -415,7 +415,7 @@ ApplicationWindow {
     Timer {
         interval: 2200
         running: backend.shotPath !== ""
-        onTriggered: (win.cinema ? cinemaView : player).grabToImage(function (result) {
+        onTriggered: (win.cinema ? cinemaView : (intro.visible ? intro : player)).grabToImage(function (result) {
             result.saveToFile(backend.shotPath)
             Qt.quit()
         })
@@ -427,9 +427,9 @@ ApplicationWindow {
         id: tray
         // CLICK_PREVIEW_PANEL=tray shows it in preview too, to test the menu.
         visible: available && backend.signedIn && (!backend.preview || backend.previewPanel === "tray")
-        icon.name: "click"
-        icon.source: "qrc:/click.svg"
-        tooltip: backend.track !== "" ? backend.track + " · " + backend.artist : "Music Player"
+        icon.name: "drift"
+        icon.source: "qrc:/drift.svg"
+        tooltip: backend.track !== "" ? backend.track + " · " + backend.artist : "Drift"
         // The time in the menu moves in 5 second steps, so the tray is not redrawn ten times a second.
         readonly property real coarse: Math.floor(backend.position / 5) * 5
         function reveal() {
@@ -476,6 +476,20 @@ ApplicationWindow {
         LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
         LayoutMirroring.childrenInherit: true
     }
+
+    // The opening: the word draws itself, then dissolves into the player, or glides up onto the welcome screen.
+    Intro {
+        id: intro
+        anchors.fill: parent
+        z: 60
+        active: !win.mini && (!backend.preview || backend.previewPanel === "intro" || backend.previewPanel === "intro-out")
+        signedIn: backend.signedIn
+        busy: backend.signingIn
+        still: backend.previewPanel === "intro" ? 0.78 : backend.previewPanel === "intro-out" ? 1 : -1
+        welcomeY: 70
+        welcomeWidth: 220
+    }
+    Binding { target: player; property: "introActive"; value: intro.visible }
 
     FullScreenLyricsView {
         id: cinemaView
@@ -530,7 +544,7 @@ ApplicationWindow {
         Column {
             anchors.centerIn: parent
             spacing: 8
-            Text { text: "Music Player"; color: "white"; font.family: "Inter"; font.pixelSize: 22; font.weight: Font.Bold }
+            Text { text: "Drift"; color: "white"; font.family: "Inter"; font.pixelSize: 22; font.weight: Font.Bold }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Scroll or ↑ ↓   move") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Click or Enter   choose") }
             Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Esc   back") }

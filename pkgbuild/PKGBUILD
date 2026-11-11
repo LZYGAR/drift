@@ -1,7 +1,7 @@
-pkgname=click
+pkgname=drift
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='A beautiful mini player for Apple Music'
+pkgdesc='Drift: a beautiful Apple Music player'
 arch=('x86_64' 'aarch64')
 license=('MIT')
 depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'qt6-webchannel' 'qt6-wayland')
@@ -17,8 +17,8 @@ build() {
 
 package() {
   cd "$startdir/.."
-  install -Dm755 build/click "$pkgdir/usr/bin/click"
+  install -Dm755 build/drift "$pkgdir/usr/bin/drift"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dm644 "$startdir/click.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/click.svg"
-  install -Dm644 "$startdir/click.desktop" "$pkgdir/usr/share/applications/click.desktop"
+  install -Dm644 "$startdir/drift.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/drift.svg"
+  install -Dm644 "$startdir/drift.desktop" "$pkgdir/usr/share/applications/drift.desktop"
 }

@@ -80,7 +80,7 @@ bool Mixer::parse(const QByteArray &output, QString &name, QVector<QPair<QString
     }
     name = object.value(QStringLiteral("name")).toString().simplified();
     if (name.isEmpty())
-        name = QStringLiteral("Click Mix");
+        name = QStringLiteral("Drift Mix");
     return !songs.isEmpty();
 }
 

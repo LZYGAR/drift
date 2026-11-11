@@ -1,6 +1,6 @@
-# Installing Music Player (step by step)
+# Installing Drift (step by step)
 
-Music Player is an Apple Music player for Linux, made for Omarchy (Arch Linux +
+Drift is an Apple Music player for Linux, made for Omarchy (Arch Linux +
 Hyprland). This page takes you from nothing to playing music. Every step says
 exactly what to type. You do not need to know how to program.
 
@@ -41,8 +41,8 @@ and may ask "Proceed with installation? [Y/n]". Type `Y` and press Enter.
 ## Step 3: Download the app
 
 ```
-git clone https://github.com/LZYGAR/music-player.git
-cd music-player
+git clone https://github.com/LZYGAR/drift.git
+cd drift
 ```
 
 The first line downloads it. The second moves into its folder.
@@ -57,14 +57,14 @@ This takes a few minutes the first time, and prints a lot of text. That is
 normal. When it finishes you will see:
 
 ```
-Installed. Search for "Music Player" in your app launcher.
+Installed. Search for "Drift" in your app launcher.
 ```
 
 If you see an error instead, jump to **Something went wrong** below.
 
 ## Step 5: Open it and sign in
 
-1. Open your app launcher (**Super + Space** on Omarchy) and type **Music Player**, then press Enter.
+1. Open your app launcher (**Super + Space** on Omarchy) and type **Drift**, then press Enter.
 2. Click **Sign in with Apple Music** and sign in with your Apple ID in the window that appears.
 3. Search for a song (the magnifier at the top left) and press play. That is it.
 
@@ -78,7 +78,7 @@ Your sign-in stays on your computer only.
 songs" queue use the Grok command-line tool.
 
 1. Install it by following xAI's instructions for the Grok CLI, and sign in once by running `grok` in a terminal.
-2. Open Music Player again. The sparkle button now works. In **Settings** (the gear at the top) you can switch "Play similar songs" on or off.
+2. Open Drift again. The sparkle button now works. In **Settings** (the gear at the top) you can switch "Play similar songs" on or off.
 
 Without Grok, the sparkle button is hidden and songs simply play from what you queue.
 
@@ -96,7 +96,7 @@ Without Grok, the sparkle button is hidden and songs simply play from what you q
 ## Updating later
 
 ```
-cd music-player
+cd drift
 git pull
 ./bin/local-install
 ```
@@ -104,10 +104,10 @@ git pull
 ## Removing it
 
 ```
-rm ~/.local/bin/click ~/.local/share/applications/click.desktop ~/.local/share/icons/hicolor/scalable/apps/click.svg
+rm ~/.local/bin/drift ~/.local/share/applications/drift.desktop ~/.local/share/icons/hicolor/scalable/apps/drift.svg
 ```
 
-Your settings live in `~/.local/share/click/`.
+Your settings live in `~/.local/share/drift/`.
 Delete that folder too if you want a completely clean start.
 
 ---

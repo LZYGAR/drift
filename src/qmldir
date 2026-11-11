@@ -16,3 +16,5 @@ PlayPauseGlyph 1.0 PlayPauseGlyph.qml
 LyricsView 1.0 LyricsView.qml
 FullScreenLyricsView 1.0 FullScreenLyricsView.qml
 LiquidField 1.0 LiquidField.qml
+DriftMark 1.0 DriftMark.qml
+Intro 1.0 Intro.qml

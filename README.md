@@ -1,4 +1,4 @@
-# Music Player
+# Drift
 
 A beautiful mini player for Apple Music on Linux. Search, queue and play your
 music from a small, fast window of frosted glass that takes its colors from
@@ -39,7 +39,7 @@ regular stream, not Lossless, and songs are not kept for offline listening.
   never "dislike": only repeated 1s and 2s, or many quick skips, make an artist
   one to avoid. The player also notices what you skip and what you play to the end.
   All of it is kept as small running totals that fade over time (one file, a few
-  KB), and Grok is told the clear parts when it makes a mix. **Options ▸ Taste**
+  KB), and Grok is told the clear parts when it makes a mix. **Settings ▸ Taste**
   switches it off or forgets it all.
 - **Similar songs, if you want them.** Turn on *Play similar songs* (the bars
   icon in the top bar, or Ctrl+K) and when a song is the last one in your queue,
@@ -54,7 +54,7 @@ regular stream, not Lossless, and songs are not kept for offline listening.
 - **Follows you across desktops (Hyprland).** While music plays, switching
   desktops carries the player along as the mini player, top left. Drag it
   somewhere else and that is where it stays on other desktops and parks next
-  time. It grows back, in its old place, on its own desktop. **Options ▸
+  time. It grows back, in its old place, on its own desktop. **Settings ▸
   Desktops** switches it off.
 - **Colors from the cover.** Three colors are read from every cover and drift
   behind the player as a slow mesh. They ease to the next song's colors over
@@ -67,9 +67,18 @@ regular stream, not Lossless, and songs are not kept for offline listening.
   ribbon through the waveform; kicks ripple along it, snares make it bounce,
   hats make its edge shimmer), Waveform, Equalizer (a spectrum analyser with
   peak caps), Dots and Minimal. Remembered.
-- **Mixes in one click.** Open search with nothing typed and chips offer a mix
-  for the time of day, "More like" your two most-liked artists, and "Surprise
-  me". One click and Grok starts making it.
+- **Search remembers.** Open search with nothing typed and your recent
+  searches are there, newest first (tap one to run it, × to forget it).
+- **Grok keeps the music going.** Pick one song and Grok keeps up to 10 similar
+  songs queued behind it, never waiting for them to play. Playlists, albums and
+  mixes are left alone, and so is repeat. Switch it off in Settings.
+- **Wrapped.** Settings has a Wrapped tab: your listening time, plays, day
+  streak, when you listen most, the last 7 days, and your top songs and artists.
+  It is kept in one small file on your machine.
+- **Picks up where you left off.** The song, the second you were at, its mix, and
+  volume, shuffle and repeat come back when you open the app.
+- **Colours from the cover.** The whole app wears the cover's colours, and a
+  white or grey cover gives a silver or charcoal app, not a borrowed tone.
 - **Liquid Glass.** Sheets are lit glass: 8% white over a 48px blur, a rim
   bright at the top-left fading to the bottom-right, a deep soft shadow. When a
   sheet opens the player behind steps back (to 96%) and blurs a little more.
@@ -82,10 +91,10 @@ regular stream, not Lossless, and songs are not kept for offline listening.
   boost", "mini"), a song to search for, or `mix: synthwave rainy night`.
 - **Make a Mix with Grok.** Type a mood, or tap one of the suggestions made for
   this hour and day ("Midnight code session"). Songs appear one by one as Grok
-  writes its answer. Click finds them on Apple Music, plays them, and can save
+  writes its answer. Drift finds them on Apple Music, plays them, and can save
   the mix to your library. Only the sentence you type, and your taste summary,
   are sent to xAI.
-- **Sound.** A three-band EQ you shape by dragging points on its curve, a
+- **Sound.** A ten-band EQ studio you shape by dragging points on its curve, a
   reverb amount, and four presets. It shapes only this app's audio through a
   PipeWire filter chain, with no effect on anything else.
 - **Mini mode.** A compact bar with art, song and waveform; the controls appear
@@ -129,7 +138,7 @@ regular stream, not Lossless, and songs are not kept for offline listening.
 
     bin/local-install
 
-Builds the app and adds **Music Player** to your app launcher (user install, no
+Builds the app and adds **Drift** to your app launcher (user install, no
 root). For an Arch package use `bin/install`.
 
 Needs Qt 6 (declarative, webengine, webchannel). The EQ and reverb need PipeWire
@@ -256,7 +265,7 @@ and playlist commands and the lyrics lookup against a fake MusicKit; the TTML,
 LRC and plain-text parsers on fixtures; every new screen as a real GPU frame.
 Not verified without a signed-in session: that Apple's `/lyrics` endpoint answers
 for your account, that adding a song to a playlist you made in Apple Music is
-allowed (if not, only the playlists Click made can take songs), which volume
+allowed (if not, only the playlists Drift made can take songs), which volume
 property the live MusicKit honours (both are set), and the real full-screen
 round trip (the window going full screen and back to 360 px) on Hyprland. A
 screenshot cannot go real full screen, so `CLICK_PREVIEW_PANEL=cinema` renders the
@@ -278,4 +287,4 @@ exactly the original position); a real switch of desktops was not run.
 
 ---
 
-Music Player is an unofficial hobby project. It is not made by, or affiliated with, Apple. "Apple Music" is a trademark of Apple Inc.
+Drift is an unofficial hobby project. It is not made by, or affiliated with, Apple. "Apple Music" is a trademark of Apple Inc.

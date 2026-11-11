@@ -1,13 +1,13 @@
 [Desktop Entry]
 Type=Application
-Name=Music Player
+Name=Drift
 Name[da]=Musikafspiller
-GenericName=Music Player
+GenericName=Drift
 Comment=A beautiful mini player for Apple Music
 Comment[da]=En flot minimusikafspiller til Apple Music
 Keywords=music;player;apple music;songs;playlist;audio;
-Exec=click
-Icon=click
+Exec=drift
+Icon=drift
 Terminal=false
 Categories=Audio;Music;Player;AudioVideo;
-StartupWMClass=click
+StartupWMClass=drift

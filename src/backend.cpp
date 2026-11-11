@@ -28,7 +28,7 @@ Backend::Backend(bool preview, QObject *parent)
     : QObject(parent), m_bridge(new Bridge(this)), m_preview(preview) {
     m_dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (m_dataPath.isEmpty())
-        m_dataPath = QDir::homePath() + "/.local/share/click";
+        m_dataPath = QDir::homePath() + "/.local/share/drift";
     m_shotPath = qEnvironmentVariable("CLICK_SHOT");
     connect(m_bridge, &Bridge::received, this, &Backend::ingest);
 
@@ -861,7 +861,7 @@ void Backend::createPlaylist(const QString &name) {
     }
     sendCommand(QStringLiteral("newplaylist"),
                 compactJson({{QStringLiteral("name"), title},
-                             {QStringLiteral("description"), playlistSummary(title) + QStringLiteral(" Made in Click.")},
+                             {QStringLiteral("description"), playlistSummary(title) + QStringLiteral(" Made in Drift.")},
                              {QStringLiteral("ids"), QJsonArray{m_trackId}}}), {}, 0);
 }
 
@@ -892,7 +892,7 @@ QString Backend::suggestPlaylistName(int hour, const QString &seed) {
     static const QStringList scenes{QStringLiteral("euphoria"), QStringLiteral("drive"), QStringLiteral("city lights"), QStringLiteral("afterglow"),
                                     QStringLiteral("late train"), QStringLiteral("highway"), QStringLiteral("loft"), QStringLiteral("daze"),
                                     QStringLiteral("skyline"), QStringLiteral("hush"), QStringLiteral("motion"), QStringLiteral("bloom")};
-    const uint h = qHash(seed.isEmpty() ? QStringLiteral("click") : seed);
+    const uint h = qHash(seed.isEmpty() ? QStringLiteral("drift") : seed);
     const QString a = moods.at(int(h % moods.size()));
     const QString b = scenes.at(int((h / 13) % scenes.size()));
     const int pattern = int((h / 7) % 3);
@@ -1028,7 +1028,7 @@ void Backend::saveMix() {
         return;
     const QString title = tidyPlaylistName(m_mixName);
     const QJsonObject payload{{QStringLiteral("name"), title},
-                              {QStringLiteral("description"), playlistSummary(m_mixRequest.isEmpty() ? title : m_mixRequest.toLower()) + QStringLiteral(" Made in Click with Grok.")},
+                              {QStringLiteral("description"), playlistSummary(m_mixRequest.isEmpty() ? title : m_mixRequest.toLower()) + QStringLiteral(" Made in Drift with Grok.")},
                               {QStringLiteral("ids"), QJsonArray::fromStringList(m_mixIds)}};
     sendCommand(QStringLiteral("savemix"), QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)), {}, 0);
     m_mixStatus = tr("Saving to your library…");

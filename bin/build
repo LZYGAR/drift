@@ -5,7 +5,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 mkdir -p "$ROOT/build"
 cd "$ROOT/build"
 
-qmake6 "$ROOT/click.pro"
+qmake6 "$ROOT/drift.pro"
 make -j"$(nproc)"
 
-echo "Built $ROOT/build/click"
+echo "Built $ROOT/build/drift"

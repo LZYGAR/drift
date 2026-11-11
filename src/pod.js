@@ -1,5 +1,5 @@
 // Talks to the MusicKit instance that music.apple.com already signed in.
-// Click draws its own screen; this only plays and reports.
+// Drift draws its own screen; this only plays and reports.
 (function () {
   if (window.__podInstalled) return;
   window.__podInstalled = true;
@@ -640,7 +640,7 @@
           });
           publish({ type: "playlists", items: mine.map(function (item) {
             var attrs = item.attributes || {};
-            return { id: String(item.id), name: text(attrs.name || ""), clickMade: /Made in Click/.test(attrs.description && attrs.description.standard || attrs.description || "") };
+            return { id: String(item.id), name: text(attrs.name || ""), clickMade: /Made in (Click|Drift)/.test(attrs.description && attrs.description.standard || attrs.description || "") };
           }) });
         }, function (error) {
           publish({ type: "playlist", state: "error", message: "Could not read your playlists: " + String(error && error.message || error) });
@@ -656,7 +656,7 @@
         var newReq = {};
         try { newReq = JSON.parse(String(arg)) || {}; } catch (e) {}
         var newBody = {
-          attributes: { name: String(newReq.name || "New playlist"), description: String(newReq.description || "Made in Click") },
+          attributes: { name: String(newReq.name || "New playlist"), description: String(newReq.description || "Made in Drift") },
           relationships: { tracks: { data: (newReq.ids || []).map(function (id) { return { id: String(id), type: songType(id) }; }) } }
         };
         music.api.music("/v1/me/library/playlists", {}, jsonBody("POST", newBody))
@@ -713,7 +713,7 @@
         var saveReq = {};
         try { saveReq = JSON.parse(String(arg)) || {}; } catch (e) {}
         var body = {
-          attributes: { name: String(saveReq.name || "Click Mix"), description: "Made in Click with Grok" },
+          attributes: { name: String(saveReq.name || "Drift Mix"), description: "Made in Drift with Grok" },
           relationships: { tracks: { data: (saveReq.ids || []).map(function (id) { return { id: String(id), type: "songs" }; }) } }
         };
         music.api.music("/v1/me/library/playlists", {}, { fetchOptions: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } })

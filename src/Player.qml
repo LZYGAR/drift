@@ -20,6 +20,8 @@ Item {
     property bool lyricsOpen: backend.previewPanel === "lyrics"
     property bool paletteOpen: backend.previewPanel === "palette"
     property bool styleOpen: backend.previewPanel === "styles" || backend.previewPanel === "styles-desktop" || backend.previewPanel === "wrapped"
+    // True while the opening animation is on screen (set by the window).
+    property bool introActive: false
     property string settingsTab: backend.previewPanel === "wrapped" ? "wrapped" : "general"
     // The Desktops row only exists where it can work; a screenshot can show it anyway (it does nothing).
     readonly property bool showFollow: desktop.available || backend.previewPanel === "styles-desktop"
@@ -2077,65 +2079,40 @@ Item {
         opacity: visible ? 1 : 0
         Rectangle { anchors.fill: parent; color: "#33000000" }
         MouseArea { anchors.fill: parent; onPressed: if (root.window) root.window.startSystemMove() }
+        // The name, drawn as strokes (see DriftMark). While the opening plays, the opening's own copy is shown instead,
+        // and glides into this spot.
         Item {
             id: logo
-            width: 96
-            height: 96
+            width: 220
+            height: crest.height
             x: (parent.width - width) / 2
-            y: 92
-            Rectangle {
-                anchors.fill: parent
-                radius: 26
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Qt.lighter(root.accent, 1.2) }
-                    GradientStop { position: 1; color: Qt.darker(root.accent, 2.6) }
-                }
-                border.color: Glass.specular
-                border.width: 1
-            }
-            Rectangle {
-                anchors.centerIn: parent
-                width: 54
-                height: 54
-                radius: 27
-                color: "#fffaf5"
-            }
-            Glyph {
-                x: (parent.width - 30) / 2 + 2
-                y: (parent.height - 30) / 2
-                size: 30
-                color: "#3b1a3f"
-                path: "M8 5v14l11-7z"
+            y: 70
+            DriftMark {
+                id: crest
+                markWidth: 220
+                running: welcome.visible && !root.introActive
+                opacity: root.introActive ? 0 : 1
+                Behavior on opacity { NumberAnimation { duration: 120 } }
             }
         }
         Text {
-            y: logo.y + logo.height + 28
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            text: qsTr("Music Player")
-            color: root.ink
-            font.family: Glass.font
-            font.pixelSize: 30
-            font.weight: Font.Bold
-        }
-        Text {
-            y: logo.y + logo.height + 76
+            y: logo.y + logo.height + 22
             x: 36
             width: parent.width - 72
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: qsTr("Your Apple Music, in a beautiful mini player.")
+            text: qsTr("Your Apple Music, in a beautiful player that moves with the music.")
             color: root.mute
             font.family: Glass.font
             font.pixelSize: 15
         }
         Column {
             x: 56
-            y: logo.y + logo.height + 150
+            y: logo.y + logo.height + 96
             width: parent.width - 112
             spacing: 12
             Repeater {
-                model: [qsTr("Search, queue and play anything"), qsTr("Grok-made mixes from one sentence"), qsTr("A three-band EQ and reverb built in"), qsTr("Ctrl+K runs any command")]
+                model: [qsTr("Search, queue and play anything"), qsTr("Grok-made mixes from one sentence"), qsTr("A 10-band EQ studio, built in"), qsTr("Ctrl+K runs any command")]
                 delegate: Row {
                     required property string modelData
                     spacing: 12

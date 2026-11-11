@@ -1,7 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file alias="MainWindow.qml">MainWindow.qml</file>
-        <file alias="click.svg">../pkgbuild/click.svg</file>
+        <file alias="drift.svg">../pkgbuild/drift.svg</file>
         <file alias="pod.js">pod.js</file>
         <file alias="authfix.js">authfix.js</file>
         <file alias="qwebchannel.js">qwebchannel.js</file>
@@ -23,6 +23,8 @@
         <file alias="CommandPalette.qml">CommandPalette.qml</file>
         <file alias="LyricsView.qml">LyricsView.qml</file>
         <file alias="LiquidField.qml">LiquidField.qml</file>
+        <file alias="DriftMark.qml">DriftMark.qml</file>
+        <file alias="Intro.qml">Intro.qml</file>
         <file alias="shaders/liquid.frag.qsb">shaders/liquid.frag.qsb</file>
         <file alias="FullScreenLyricsView.qml">FullScreenLyricsView.qml</file>
         <file alias="shaders/fringe.frag.qsb">shaders/fringe.frag.qsb</file>

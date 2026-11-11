@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs the current build for your user only: launcher entry, icon, binary.
-# After this, "Music Player" shows up when you search your apps.
+# After this, "Drift" shows up when you search your apps.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -11,12 +11,15 @@ APPS="$HOME/.local/share/applications"
 ICONS="$HOME/.local/share/icons/hicolor/scalable/apps"
 mkdir -p "$BIN" "$APPS" "$ICONS"
 
-install -m755 "$ROOT/build/click" "$BIN/click"
-install -m644 "$ROOT/pkgbuild/click.svg" "$ICONS/click.svg"
-sed "s|^Exec=click|Exec=$BIN/click|; s|^Icon=click|Icon=$ICONS/click.svg|" \
-    "$ROOT/pkgbuild/click.desktop" > "$APPS/click.desktop"
-chmod 644 "$APPS/click.desktop"
+# The app used to be called "click": drop the old launcher entry so there is only one.
+rm -f "$BIN/click" "$APPS/click.desktop" "$ICONS/click.svg"
+
+install -m755 "$ROOT/build/drift" "$BIN/drift"
+install -m644 "$ROOT/pkgbuild/drift.svg" "$ICONS/drift.svg"
+sed "s|^Exec=click|Exec=$BIN/drift|; s|^Icon=click|Icon=$ICONS/drift.svg|" \
+    "$ROOT/pkgbuild/drift.desktop" > "$APPS/drift.desktop"
+chmod 644 "$APPS/drift.desktop"
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
-echo "Installed. Search for \"Music Player\" in your app launcher."
+echo "Installed. Search for \"Drift\" in your app launcher."
