@@ -26,6 +26,16 @@ Item {
     property bool going: false
     property bool goingHome: false      // glide to the welcome spot rather than dissolve
     property real waited: 0
+    // A different quip each launch, never more than a few words.
+    readonly property var quips: [
+        qsTr("Bass drops, worries don't"), qsTr("Headphones: the real therapy"), qsTr("Skip less, feel more"),
+        qsTr("Turn it up"), qsTr("Your ears called"), qsTr("Now playing: your mood"),
+        qsTr("Louder than your thoughts"), qsTr("Shuffle responsibly"), qsTr("One more song"),
+        qsTr("Good vibes, loaded"), qsTr("Press play, problem solved"), qsTr("Live in the groove"),
+        qsTr("Eyes closed, volume up"), qsTr("Repeat is a lifestyle"), qsTr("Hum along"),
+        qsTr("Tunes over everything"), qsTr("Sounds like you"), qsTr("Main character music")
+    ]
+    property string line: quips[Math.floor(Math.random() * quips.length)]
     // 1 while the word pours in, easing to 0 as it sets; it melts again as it leaves.
     property real molten: 1
 
@@ -69,7 +79,7 @@ Item {
     Text {
         anchors.horizontalCenter: parent.horizontalCenter
         y: word.y + word.height + 18
-        text: intro.busy ? qsTr("Signing in…") : qsTr("your music, drifting")
+        text: intro.busy ? qsTr("Signing in…") : intro.line
         color: "#a8a8b0"
         font.family: Glass.font
         font.pixelSize: 14
