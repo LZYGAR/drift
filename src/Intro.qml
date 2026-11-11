@@ -25,6 +25,8 @@ Item {
     property bool going: false
     property bool goingHome: false      // glide to the welcome spot rather than dissolve
     property real waited: 0
+    // 1 while the word pours in, easing to 0 as it sets; it melts again as it leaves.
+    property real molten: 1
 
     property bool active: true
     visible: active && (leave < 1 || still >= 0)
@@ -45,7 +47,7 @@ Item {
         primary: "#ffffff"
         secondary: "#8d8d95"
         ambient: "#050506"
-        opacity: 0.55 * (intro.goingHome ? 1 - intro.leave : (1 - intro.leave)) * Math.min(1, intro.drawn * 1.5)
+        opacity: 0.85 * (intro.goingHome ? 1 - intro.leave : (1 - intro.leave)) * Math.min(1, intro.drawn * 1.5)
     }
 
     DriftMark {
@@ -60,6 +62,7 @@ Item {
         scale: intro.goingHome ? 1 : 1 + 0.5 * intro.leave
         opacity: intro.goingHome ? 1 : 1 - intro.leave
         glow: 1 + 0.8 * Math.sin(Math.min(1, intro.drawn) * Math.PI)
+        liquid: intro.still >= 0 ? (intro.still < 1 ? 0.8 : 0) : intro.molten
     }
     // the line under it
     Text {
@@ -78,8 +81,9 @@ Item {
     SequentialAnimation {
         id: timeline
         running: intro.still < 0 && intro.visible
-        NumberAnimation { target: intro; property: "drawn"; from: 0; to: 1; duration: 1500; easing.type: Easing.InOutCubic }
-        PauseAnimation { duration: 350 }
+        NumberAnimation { target: intro; property: "drawn"; from: 0; to: 1; duration: 1700; easing.type: Easing.InOutCubic }
+        NumberAnimation { target: intro; property: "molten"; from: 1; to: 0; duration: 900; easing.type: Easing.OutCubic }
+        PauseAnimation { duration: 250 }
         ScriptAction { script: { intro.going = true; check.start() } }
     }
     // Once drawn, wait until the sign-in state is known (up to `patience`), then leave.
@@ -92,10 +96,12 @@ Item {
             if (intro.signedIn || (!intro.busy && intro.waited >= intro.patience)) {
                 stop()
                 intro.goingHome = !intro.signedIn
+                if (!intro.goingHome) melt.start()
                 leaving.start()
             }
         }
     }
+    NumberAnimation { id: melt; target: intro; property: "molten"; to: 1; duration: 700; easing.type: Easing.InCubic }
     NumberAnimation {
         id: leaving
         target: intro

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects
+import QtQuick.Window
 
 // The word "drift", drawn as five bold round-ended strokes instead of a font, so it looks the same on every machine.
 //
@@ -15,10 +16,10 @@ Item {
     property real progress: 1
     property bool running: true
     property real glow: 1
-    // Black and white: frosted glass with a travelling sheen.
-    property color inkA: "#ffffff"
-    property color inkB: "#9d9da6"
-    property color inkC: "#3a3a40"
+    // 1 is molten (edges melt and wobble, drops fly in), 0 is settled glass that only breathes.
+    property real liquid: 0
+    // Room around the letters for the wobble, the drops and the halo.
+    readonly property real pad: 46 * u
 
     readonly property real u: markWidth / 300
     width: markWidth
@@ -59,60 +60,19 @@ Item {
         return Math.max(0, Math.min(1, (progress - i * 0.14) / 0.44))
     }
 
-    // Colour, shown only through the letters: a slow tide of pink, violet and cyan, with a bright edge crossing it.
-    Item {
-        id: ink
-        anchors.fill: parent
-        visible: false
-        layer.enabled: true
-        layer.smooth: true
-        Rectangle {
-            id: tide
-            width: mark.width * 2
-            height: parent.height
-            x: -((mark.beat * 38 + mark.progress * 90) % mark.width)
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: mark.inkA }
-                GradientStop { position: 0.25; color: "#e4e4e8" }
-                GradientStop { position: 0.5; color: mark.inkB }
-                GradientStop { position: 0.75; color: "#e4e4e8" }
-                GradientStop { position: 1.0; color: mark.inkA }
-            }
-        }
-        // lighter on top, deeper underneath
-        Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
-                GradientStop { position: 0; color: "#66ffffff" }
-                GradientStop { position: 0.5; color: "transparent" }
-                GradientStop { position: 1; color: "#22000000" }
-            }
-        }
-        Rectangle {
-            width: parent.width * 0.3
-            height: parent.height * 1.4
-            y: -parent.height * 0.2
-            rotation: 18
-            x: (mark.beat * 90 % (parent.width * 2)) - parent.width * 0.4
-            opacity: 0.35 * Math.min(1, mark.progress)
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: "transparent" }
-                GradientStop { position: 0.5; color: "#ffffffff" }
-                GradientStop { position: 1; color: "transparent" }
-            }
-        }
-    }
-
     // The letters themselves (the mask).
     Item {
         id: letters
-        anchors.fill: parent
+        x: -mark.pad
+        y: -mark.pad
+        width: mark.width + 2 * mark.pad
+        height: mark.height + 2 * mark.pad
         visible: false
         layer.enabled: true
         layer.smooth: true
         layer.samples: 8
+        // Twice the screen's own pixels, so the edge stays clean when the glass bends it.
+        layer.textureSize: Qt.size(Math.ceil(width * 2 * Screen.devicePixelRatio), Math.ceil(height * 2 * Screen.devicePixelRatio))
 
         Repeater {
             model: mark.glyphs
@@ -121,8 +81,8 @@ Item {
                 required property var modelData
                 required property int index
                 readonly property real p: mark.letterProgress(index)
-                x: modelData.x * mark.u
-                y: (10 + 1.6 * Math.sin(mark.beat * 1.3 + index * 0.9)) * mark.u
+                x: mark.pad + modelData.x * mark.u
+                y: mark.pad + (10 + 1.6 * Math.sin(mark.beat * 1.3 + index * 0.9)) * mark.u
                 rotation: 1.6 * Math.sin(mark.beat * 0.9 + index * 1.7)
                 transformOrigin: Item.Bottom
 
@@ -171,13 +131,40 @@ Item {
         return d.replace(/-?\d+(\.\d+)?/g, function (n) { return (parseFloat(n) * mark.u).toFixed(2) })
     }
 
-    // the ink, through the letters
+    // The same word, blurred: the height of the glass (see shaders/glassword.frag).
     MultiEffect {
-        anchors.fill: parent
-        source: ink
-        maskEnabled: true
-        maskSource: letters
-        maskThresholdMin: 0.3
-        maskSpreadAtMin: 0.25
+        id: soft
+        x: letters.x
+        y: letters.y
+        width: letters.width
+        height: letters.height
+        source: letters
+        visible: false
+        layer.enabled: true
+        layer.smooth: true
+        autoPaddingEnabled: false
+        blurEnabled: true
+        blur: 1.0
+        blurMax: Math.max(4, Math.round(13 * mark.u))
+    }
+    property real clock: 0
+    FrameAnimation {
+        running: mark.running && mark.visible
+        onTriggered: mark.clock += frameTime
+    }
+    ShaderEffect {
+        x: letters.x
+        y: letters.y
+        width: letters.width
+        height: letters.height
+        property var sharp: letters
+        property var soft: soft
+        property real time: mark.clock
+        property real liquid: mark.liquid
+        property real progress: mark.progress
+        property real glow: mark.glow
+        property size size: Qt.size(width, height)
+        blending: true
+        fragmentShader: Qt.resolvedUrl("shaders/glassword.frag.qsb")
     }
 }

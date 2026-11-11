@@ -26,6 +26,7 @@
         <file alias="DriftMark.qml">DriftMark.qml</file>
         <file alias="Intro.qml">Intro.qml</file>
         <file alias="shaders/liquid.frag.qsb">shaders/liquid.frag.qsb</file>
+        <file alias="shaders/glassword.frag.qsb">shaders/glassword.frag.qsb</file>
         <file alias="FullScreenLyricsView.qml">FullScreenLyricsView.qml</file>
         <file alias="shaders/fringe.frag.qsb">shaders/fringe.frag.qsb</file>
         <file alias="HeaderPlusPill.qml">HeaderPlusPill.qml</file>
