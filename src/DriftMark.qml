@@ -13,6 +13,7 @@ Item {
     id: mark
 
     property real markWidth: 300
+    property color tint: Qt.rgba(0.975, 0.985, 1, 1)
     property real progress: 1
     property bool running: true
     property real glow: 1
@@ -164,6 +165,7 @@ Item {
         property real progress: mark.progress
         property real glow: mark.glow
         property size size: Qt.size(width, height)
+        property color tint: mark.tint
         blending: true
         fragmentShader: Qt.resolvedUrl("shaders/glassword.frag.qsb")
     }

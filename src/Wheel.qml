@@ -109,7 +109,7 @@ Item {
         y: parent.height * 0.07
         text: "⌃"
         color: wheel.pressedSector === "menu" ? "#fff6ee" : "#a6f8e7dc"
-        font.family: "Inter"
+        font.family: Glass.font
         font.pixelSize: 13
         font.weight: Font.Medium
     }
@@ -118,7 +118,7 @@ Item {
         x: parent.width * 0.055
         text: "◀"
         color: wheel.pressedSector === "previous" ? "#fff6ee" : "#c8f8e7dc"
-        font.family: "Inter"
+        font.family: Glass.font
         font.pixelSize: 11
     }
     Text {
@@ -127,7 +127,7 @@ Item {
         anchors.rightMargin: parent.width * 0.055
         text: "▶"
         color: wheel.pressedSector === "next" ? "#fff6ee" : "#c8f8e7dc"
-        font.family: "Inter"
+        font.family: Glass.font
         font.pixelSize: 11
     }
     Text {
@@ -136,7 +136,7 @@ Item {
         anchors.bottomMargin: parent.height * 0.055
         text: backend.playing ? "❚❚" : "▶"
         color: wheel.pressedSector === "play" ? "#fff6ee" : "#a6f8e7dc"
-        font.family: "Inter"
+        font.family: Glass.font
         font.pixelSize: 9
         font.letterSpacing: 1
     }

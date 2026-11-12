@@ -42,6 +42,14 @@ public:
     bool away() const { return m_away; }
     // For testing the whole sequence without switching desktops: carries this window away (true) or home (false).
     Q_INVOKABLE void simulate(bool away);
+    // The mini player steps up to the full player to show a panel, and back down afterwards. Hyprland re-centres a
+    // window when it changes size, so a mini near the top of the screen would grow off the top of it. These three keep
+    // the window fully on screen while it is big, and put it back exactly where it was once it is small again.
+    Q_INVOKABLE void rememberPlace();
+    Q_INVOKABLE void keepOnScreen();
+    Q_INVOKABLE void restorePlace();
+    // Moves a window of `width` by `height` at (x, y) the least it takes to lie inside the monitor's usable area.
+    static QPair<int, int> clampInside(const QJsonObject &monitor, int x, int y, int width, int height);
 
     // ---- the decisions and commands, as plain functions so they can be tested ----
     enum class Step { Nothing, GoAway, KeepAway, ComeHome };
@@ -89,6 +97,8 @@ private:
     void runHyprctl(const QStringList &args, std::function<void(const QByteArray &)> done = {});
     void dispatch(const QString &lua);
     void setAway(bool away);
+    void keepOnScreenStep(int attempt);
+    void withOwnClient(std::function<void(const QJsonObject &)> done);
 
     bool m_available = false;
     bool m_follow = true;
@@ -108,6 +118,8 @@ private:
     int m_parkX = 0, m_parkY = 0;
     QString m_prefsPath;
     QString m_address;
+    bool m_hasPeek = false;
+    int m_peekX = 0, m_peekY = 0;
     QLocalSocket m_events;
     QTimer m_debounce;
     QTimer m_reconnect;

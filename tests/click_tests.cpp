@@ -1651,11 +1651,15 @@ private slots:
         // Back in the corner exactly as the default would have it, if that is where it was left.
         QCOMPARE(Desktop::parkSpot(monitor, 14, true, 14, 14), qMakePair(14, 48));
         // Never off the screen (a smaller or different monitor now): kept fully inside.
-        QCOMPARE(Desktop::parkSpot(monitor, 14, true, 5000, 5000), qMakePair(1920 - 360, 1200 - 96));
+        QCOMPARE(Desktop::parkSpot(monitor, 14, true, 5000, 5000), qMakePair(1920 - 360, 1200 - 144));
         QCOMPARE(Desktop::parkSpot(monitor, 14, true, -50, -50), qMakePair(0, 34));
+        // Growing from the mini player near the top: pulled back inside, and left alone when already inside.
+        QCOMPARE(Desktop::clampInside(monitor, 100, -120, 360, 640), qMakePair(100, 34));
+        QCOMPARE(Desktop::clampInside(monitor, 100, 900, 360, 640), qMakePair(100, 1200 - 640));
+        QCOMPARE(Desktop::clampInside(monitor, 100, 200, 360, 640), qMakePair(100, 200));
         // A monitor with scaling: sizes are in logical pixels.
         const QJsonObject scaled = QJsonDocument::fromJson(R"({"x":1920,"y":0,"width":3840,"height":2400,"scale":2.0,"reserved":[0,0,0,0]})").object();
-        QCOMPARE(Desktop::parkSpot(scaled, 14, true, 9999, 9999), qMakePair(1920 + 1920 - 360, 1200 - 96));
+        QCOMPARE(Desktop::parkSpot(scaled, 14, true, 9999, 9999), qMakePair(1920 + 1920 - 360, 1200 - 144));
     }
 
     void followMeIsInertWhereItCannotWork()

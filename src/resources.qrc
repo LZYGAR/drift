@@ -31,6 +31,11 @@
         <file alias="shaders/fringe.frag.qsb">shaders/fringe.frag.qsb</file>
         <file alias="HeaderPlusPill.qml">HeaderPlusPill.qml</file>
         <file alias="ActionDropdown.qml">ActionDropdown.qml</file>
+        <file alias="Chip.qml">Chip.qml</file>
+        <file alias="SettingsPanel.qml">SettingsPanel.qml</file>
+        <file alias="SearchPanel.qml">SearchPanel.qml</file>
+        <file alias="LiquidGlass.qml">LiquidGlass.qml</file>
+        <file alias="MiniMenu.qml">MiniMenu.qml</file>
         <file alias="LiquidSwitch.qml">LiquidSwitch.qml</file>
         <file alias="PlayPauseGlyph.qml">PlayPauseGlyph.qml</file>
     </qresource>

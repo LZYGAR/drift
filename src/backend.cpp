@@ -146,6 +146,8 @@ Backend::Backend(bool preview, QObject *parent)
         m_useTaste = prefs.value(QStringLiteral("taste/use"), true).toBool();
         m_history = prefs.value(QStringLiteral("search/history")).toStringList();
         m_introEnabled = prefs.value(QStringLiteral("ui/intro"), true).toBool();
+        m_themeFollow = prefs.value(QStringLiteral("ui/themeFollow"), false).toBool();
+        m_fontFollow = prefs.value(QStringLiteral("ui/fontFollow"), false).toBool();
     }
     // A page that never answers must not keep the window hidden: after twelve seconds it is treated as known.
     QTimer::singleShot(12000, this, [this] { markSessionKnown(); });
@@ -1007,6 +1009,15 @@ void Backend::restoreSession() {
                            {QStringLiteral("ids"), QJsonArray::fromStringList(ids)}};
     m_mixIds = ids;
     m_restoreClock.start();
+    // Hold the window back until the song is here, so it opens on Now Playing and not on the menu first.
+    m_restorePending = true;
+    emit sessionChanged();
+    QTimer::singleShot(3500, this, [this] {
+        if (m_restorePending) {
+            m_restorePending = false;
+            emit sessionChanged();
+        }
+    });
     sendCommand(QStringLiteral("restore"), QString::fromUtf8(QJsonDocument(snap).toJson(QJsonDocument::Compact)), {}, 0);
     // The player's own settings come back too.
     if (prefs.contains(QStringLiteral("session/volume")))
@@ -1375,6 +1386,28 @@ void Backend::setIntroEnabled(bool on) {
     emit introChanged();
 }
 
+void Backend::setThemeFollow(bool on) {
+    if (on == m_themeFollow)
+        return;
+    m_themeFollow = on;
+    if (!m_preview) {
+        QSettings prefs(m_dataPath + QStringLiteral("/prefs.conf"), QSettings::IniFormat);
+        prefs.setValue(QStringLiteral("ui/themeFollow"), on);
+    }
+    emit themeFollowChanged();
+}
+
+void Backend::setFontFollow(bool on) {
+    if (on == m_fontFollow)
+        return;
+    m_fontFollow = on;
+    if (!m_preview) {
+        QSettings prefs(m_dataPath + QStringLiteral("/prefs.conf"), QSettings::IniFormat);
+        prefs.setValue(QStringLiteral("ui/fontFollow"), on);
+    }
+    emit fontFollowChanged();
+}
+
 void Backend::rememberSearch(const QString &text) {
     const QString clean = text.simplified();
     if (clean.size() < 2 || m_preview)
@@ -1656,7 +1689,10 @@ void Backend::ingest(const QString &json) {
         field = value.toDouble();
         playback = true;
     };
-    if (object.contains(QStringLiteral("authorized"))) {
+    // While the page is still loading it reports "ready: false, authorized: false". That is "not known yet", not
+    // "signed out": acting on it flashed the sign-in screen at people who are signed in.
+    const bool pageReady = !object.contains(QStringLiteral("ready")) || object.value(QStringLiteral("ready")).toBool(true);
+    if (object.contains(QStringLiteral("authorized")) && pageReady) {
         takeBool("authorized", m_signedIn);
         markSessionKnown();
     }
@@ -1757,6 +1793,10 @@ void Backend::ingest(const QString &json) {
     }
     if (m_signedIn && m_stack.size() == 1 && (titleArrived || started))
         showNowPlaying();
+    if (m_restorePending && !m_track.isEmpty()) {
+        m_restorePending = false;
+        emit sessionChanged();
+    }
     if (playback)
         emit playbackChanged();
 }

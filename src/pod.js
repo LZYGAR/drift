@@ -154,6 +154,20 @@
   function arm(music) {
     if (!music || music.__podArmed) return;
     try { music.__podArmed = true; } catch (e) { return; }
+    // If MusicKit ever drops the sign-in on its own, leave a note of when and what it had just been doing.
+    // Read it with: localStorage.driftAuthLog (in the page's DevTools). Never contains tokens.
+    try {
+      music.addEventListener("authorizationStatusDidChange", function () {
+        var now = false;
+        try { now = !!music.isAuthorized; } catch (e) {}
+        if (now) return;
+        var log = [];
+        try { log = JSON.parse(localStorage.driftAuthLog || "[]"); } catch (e) {}
+        log.push({ at: new Date().toISOString(), authorized: now, lastCommand: window.__podLastCommand || "" });
+        try { localStorage.driftAuthLog = JSON.stringify(log.slice(-20)); } catch (e) {}
+        try { console.warn("[drift] MusicKit dropped the sign-in after: " + (window.__podLastCommand || "?")); } catch (e) {}
+      });
+    } catch (e) {}
     ["playbackStateDidChange", "nowPlayingItemDidChange", "playbackTimeDidChange", "queueItemsDidChange"].forEach(function (name) {
       try {
         music.addEventListener(name, function () { publish(snapshot()); });
@@ -294,7 +308,7 @@
   // A read from Apple's API that cannot sign anyone out. MusicKit's own `api.music` treats some refusals as a
   // dead session and drops the sign-in; optional extras (lyrics) go through a plain fetch with the same tokens
   // instead, so a 401/403/404 there is only "no lyrics".
-  function quietGet(music, path, params) {
+  function quietRequest(music, method, path, params, body) {
     var dev = "", user = "";
     try { dev = music.developerToken || ""; user = music.musicUserToken || ""; } catch (e) {}
     if (!dev || typeof fetch !== "function") return Promise.reject(new Error("no token"));
@@ -306,11 +320,16 @@
     }
     var headers = { Authorization: "Bearer " + dev };
     if (user) headers["Media-User-Token"] = user;
-    return fetch("https://amp-api.music.apple.com" + path + query, { headers: headers, credentials: "omit" }).then(function (response) {
+    var options = { method: method, headers: headers, credentials: "omit" };
+    if (body !== undefined) { headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
+    return fetch("https://amp-api.music.apple.com" + path + query, options).then(function (response) {
       if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
+      if (method === "GET") return response.json();
+      // DELETE and some POSTs answer with no body.
+      return response.text().then(function (text) { try { return text ? JSON.parse(text) : {}; } catch (e) { return {}; } });
     });
   }
+  function quietGet(music, path, params) { return quietRequest(music, "GET", path, params); }
 
   function jsonBody(method, body) {
     return { fetchOptions: { method: method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) } };
@@ -388,6 +407,7 @@
   }
 
   window.__podExec = function (cmd, arg, type, token) {
+    if (cmd !== "seek" && cmd !== "volume") window.__podLastCommand = String(cmd) + " " + new Date().toISOString();
     if (cmd === "authorize") {
       if (window.__podAuthorizing) return;
       window.__podAuthorizing = true;
@@ -648,8 +668,8 @@
       } else if (cmd === "addtoplaylist") {
         var addReq = {};
         try { addReq = JSON.parse(String(arg)) || {}; } catch (e) {}
-        music.api.music("/v1/me/library/playlists/" + encodeURIComponent(addReq.playlist) + "/tracks", {},
-          jsonBody("POST", { data: [{ id: String(addReq.song), type: songType(addReq.song) }] }))
+        quietRequest(music, "POST", "/v1/me/library/playlists/" + encodeURIComponent(addReq.playlist) + "/tracks", null,
+          { data: [{ id: String(addReq.song), type: songType(addReq.song) }] })
           .then(function () { publish({ type: "playlist", state: "added", name: addReq.name || "" }); },
                 function (error) { publish({ type: "playlist", state: "error", message: "Could not add: " + String(error && error.message || error) }); });
       } else if (cmd === "newplaylist") {
@@ -659,7 +679,7 @@
           attributes: { name: String(newReq.name || "New playlist"), description: String(newReq.description || "Made in Drift") },
           relationships: { tracks: { data: (newReq.ids || []).map(function (id) { return { id: String(id), type: songType(id) }; }) } }
         };
-        music.api.music("/v1/me/library/playlists", {}, jsonBody("POST", newBody))
+        quietRequest(music, "POST", "/v1/me/library/playlists", null, newBody)
           .then(function (result) {
             var made = bodyItems(result)[0] || {};
             publish({ type: "playlist", state: "created", name: newBody.attributes.name, id: String(made.id || "") });
@@ -699,8 +719,8 @@
         // Apple Music's own heart: a rating of 1 on the catalog song.
         var loveId = String(arg);
         var loved = cmd === "love"
-          ? music.api.music("/v1/me/ratings/" + songType(loveId) + "/" + encodeURIComponent(loveId), {}, jsonBody("PUT", { type: "rating", attributes: { value: 1 } }))
-          : music.api.music("/v1/me/ratings/" + songType(loveId) + "/" + encodeURIComponent(loveId), {}, jsonBody("DELETE"));
+          ? quietRequest(music, "PUT", "/v1/me/ratings/" + songType(loveId) + "/" + encodeURIComponent(loveId), null, { type: "rating", attributes: { value: 1 } })
+          : quietRequest(music, "DELETE", "/v1/me/ratings/" + songType(loveId) + "/" + encodeURIComponent(loveId));
         Promise.resolve(loved).then(function () { publish({ type: "rating", id: loveId, loved: cmd === "love" }); },
                                     function (error) { publish({ type: "playlist", state: "error", message: "Could not save the like: " + String(error && error.message || error) }); });
       } else if (cmd === "rating") {
@@ -716,7 +736,7 @@
           attributes: { name: String(saveReq.name || "Drift Mix"), description: "Made in Drift with Grok" },
           relationships: { tracks: { data: (saveReq.ids || []).map(function (id) { return { id: String(id), type: "songs" }; }) } }
         };
-        music.api.music("/v1/me/library/playlists", {}, { fetchOptions: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } })
+        quietRequest(music, "POST", "/v1/me/library/playlists", null, body)
           .then(function () { publish({ type: "mix", state: "saved" }); },
                 function (error) { publish({ type: "mix", state: "error", message: "Could not save: " + String(error && error.message || error) }); });
       } else if (cmd === "playnext" || cmd === "playlater") {

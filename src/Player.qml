@@ -15,7 +15,7 @@ Item {
     property var window: null
     property bool plusOpen: backend.previewPanel === "plus"
     // True while the new-playlist field in the + menu owns the keyboard.
-    readonly property bool plusTyping: plusMenu.typing
+    readonly property bool plusTyping: plusMenu.typing || miniPlusDrop.typing
     property bool soundOpen: backend.previewPanel === "sound" || backend.previewPanel === "studio"
     property bool lyricsOpen: backend.previewPanel === "lyrics"
     property bool paletteOpen: backend.previewPanel === "palette"
@@ -34,8 +34,27 @@ Item {
         { id: "dots", label: qsTr("Dots"), hint: qsTr("Dots tracing the loudness") },
         { id: "minimal", label: qsTr("Minimal"), hint: qsTr("A calm, quiet line") }
     ]
-    readonly property bool mini: window ? window.mini : false
+    // (In full screen the player is only ever shown as the card that carries a panel, so it lays out as the full one.)
+    readonly property bool mini: window ? (window.mini && !window.cinema) : false
+    // The mini player's buttons open the big panels by stepping up to the full player, then step back down
+    // once everything is closed again (see peek()).
+    property bool peeking: false
+    readonly property bool panelOpen: soundOpen || styleOpen || paletteOpen || lyricsOpen || plusOpen
+    readonly property bool wantsMini: peeking && !mini && !panelOpen && backend.kind !== "search" && backend.kind !== "mix"
+                                      && (backend.kind === "now" || backend.atRoot)
+    onWantsMiniChanged: if (wantsMini && window) { peeking = false; window.mini = true; desktop.restorePlace() }
+    // `open` runs first, so the panel is already on its way when the window starts to grow.
+    function peek(open) {
+        if (!mini || !window) { open(); return }
+        desktop.rememberPlace()
+        open()
+        peeking = true
+        window.mini = false
+        desktop.keepOnScreen()
+    }
     onMiniChanged: {
+        if (mini) peeking = false
+        if (!mini) miniPlus.close()
         if (mini) { soundOpen = false; paletteOpen = false; styleOpen = false; plusOpen = false; lyricsOpen = false }
         // The cover flies between the two layouts only when the big one is on show.
         flyer.fromNow = nowView && !signedOut
@@ -209,46 +228,6 @@ Item {
     }
 
     // A pill of glass with a label: chips and small buttons.
-    component Chip: Rectangle {
-        id: chip
-        property string label: ""
-        property bool strong: false     // filled with ink, for the main action
-        property bool tinted: false     // a touch of the accent, for chips made for this moment
-        property bool dimmed: false
-        property real pad: 14
-        signal clicked()
-        height: 34
-        width: chipText.implicitWidth + pad * 2
-        radius: height / 2
-        color: strong ? Glass.ink
-            : tinted ? Qt.rgba(Glass.accent.r, Glass.accent.g, Glass.accent.b, chipArea.containsMouse ? 0.42 : 0.26)
-            : (chipArea.containsMouse ? Glass.fillHover : Glass.fill)
-        border.color: strong ? "transparent" : Glass.specular
-        border.width: 1
-        opacity: dimmed ? 0.45 : 1
-        scale: chipArea.pressed ? 0.94 : 1
-        Behavior on scale { SpringAnimation { spring: Glass.springBouncy; damping: Glass.dampingBouncy; epsilon: 0.002 } }
-        Behavior on color { ColorAnimation { duration: 140 } }
-        Behavior on opacity { NumberAnimation { duration: 160 } }
-        Text {
-            id: chipText
-            anchors.centerIn: parent
-            text: chip.label
-            color: chip.strong ? Glass.inkText : Glass.ink
-            font.family: Glass.font
-            font.pixelSize: 13
-            font.weight: chip.strong ? Font.Bold : Font.Normal
-        }
-        MouseArea {
-            id: chipArea
-            anchors.fill: parent
-            hoverEnabled: true
-            enabled: !chip.dimmed
-            cursorShape: Qt.PointingHandCursor
-            onClicked: chip.clicked()
-        }
-    }
-
     // Artwork with rounded corners and a gradient stand-in while it loads.
     component Cover: Item {
         id: art
@@ -320,9 +299,9 @@ Item {
             id: mesh
             anchors.fill: parent
             // It drifts behind the player and the mini player. Behind lists it holds still.
-            running: backend.playing && (root.nowView || root.mini)
+            running: backend.playing && (root.nowView || root.mini || root.anySheet)
             // Full colour on the player, calmer behind lists so the words stay easy to read.
-            calm: root.nowView || root.mini || root.signedOut ? 0 : 1
+            calm: root.nowView || root.mini || root.signedOut || root.anySheet ? 0 : 1
         }
 
         // Drag the frameless window by any empty background.
@@ -1519,9 +1498,6 @@ Item {
                 y: 15
                 width: parent.width - 94 - 16
                 spacing: 2
-                opacity: 1 - Math.min(1, miniPane.reveal * 1.6)
-                visible: opacity > 0.01
-                transform: Translate { y: -6 * miniPane.reveal }
                 Text {
                     width: parent.width
                     text: root.hasTrack ? backend.track : qsTr("Nothing playing")
@@ -1541,39 +1517,110 @@ Item {
                     visible: text !== ""
                 }
             }
-            // under the pointer: previous, play, next, each arriving a moment apart
+            // The controls, always in reach: transport, the heart, and the panels (each opens the big player and
+            // steps back down when closed).
+            Rectangle { x: 16; y: 95; width: parent.width - 32; height: 1; color: Glass.specular }
+            // The + menu, in a popup window of its own (see MiniMenu.qml).
+            MiniMenu {
+                id: miniPlus
+                // CLICK_PREVIEW_PANEL=miniplus opens it, to check it loads.
+                Component.onCompleted: if (backend.previewPanel === "miniplus") Qt.callLater(open)
+                parent: miniControls
+                menuWidth: miniPlusDrop.width
+                menuHeight: miniPlusDrop.height
+                x: Math.round((miniControls.width - width) / 2)
+                y: miniControls.height + 6
+                ActionDropdown {
+                    id: miniPlusDrop
+                    bare: true
+                    open: miniPlus.visible
+                    onDismissed: miniPlus.close()
+                }
+            }
             Row {
-                x: 88
-                y: 10
-                spacing: 2
-                visible: miniPane.reveal > 0.02
-                opacity: Math.min(1, miniPane.reveal)
+                id: miniControls
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 98
+                spacing: 0
                 IconButton {
                     anchors.verticalCenter: parent.verticalCenter
                     path: "M6 6h2v12H6zM9.5 12l8.5 6V6z"
-                    size: 20
-                    hit: 40
-                    transform: Translate { y: 10 * (1 - miniPane.reveal) }
+                    size: 18
+                    hit: 36
                     onClicked: backend.previousTrack()
                 }
                 IconButton {
                     anchors.verticalCenter: parent.verticalCenter
                     playState: backend.playing ? 1 : 0
-                    size: 22
-                    hit: 44
+                    size: 20
+                    hit: 40
                     filled: true
                     fill: root.ink
                     tint: Glass.inkText
-                    transform: Translate { y: 16 * (1 - miniPane.reveal) }
                     onClicked: backend.playPause()
                 }
                 IconButton {
                     anchors.verticalCenter: parent.verticalCenter
                     path: "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"
-                    size: 20
-                    hit: 40
-                    transform: Translate { y: 22 * (1 - miniPane.reveal) }
+                    size: 18
+                    hit: 36
                     onClicked: backend.nextTrack()
+                }
+                IconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.hasTrack
+                    size: 18
+                    hit: 36
+                    tint: backend.songRating > 0 ? Glass.accent : root.mute
+                    path: backend.songRating > 0
+                        ? "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                        : "M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"
+                    onClicked: root.toggleHeart()
+                }
+                // search
+                IconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    path: "M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+                    size: 18
+                    hit: 36
+                    tint: root.mute
+                    onClicked: root.peek(function () { backend.openSearch() })
+                }
+                // the + menu: add to queue and playlists, make a mix
+                IconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    path: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
+                    size: 18
+                    hit: 36
+                    tint: root.mute
+                    onClicked: miniPlus.visible ? miniPlus.close() : miniPlus.open()
+                }
+                // sound (EQ)
+                IconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    path: "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 14v2h8v-2h-8zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"
+                    size: 18
+                    hit: 36
+                    tint: effects.enabled ? Glass.accentLight : root.mute
+                    onClicked: root.peek(function () { root.soundOpen = true })
+                }
+                // lyrics
+                IconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    path: "M4 5h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm0 4h10v2H4z"
+                    size: 18
+                    hit: 36
+                    tint: root.mute
+                    onClicked: root.peek(function () { root.lyricsOpen = true })
+                }
+                // settings
+                IconButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    path: "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+                    size: 16
+                    hit: 36
+                    tint: root.mute
+                    onClicked: root.peek(function () { root.styleOpen = true })
                 }
             }
             LiquidScrubber {
@@ -1600,432 +1647,26 @@ Item {
         onClicked: root.styleOpen = false
     }
 
-    // One compact setting: a name, one quiet line under it, and a switch.
-    component SettingRow: Item {
-        id: setting
-        property string title: ""
-        property string note: ""
-        property bool checked: false
-        property bool interactive: true
-        signal toggled()
-        width: parent ? parent.width : 0
-        height: 58
-        Rectangle { width: parent.width - 12; x: 6; height: 1; color: Glass.specular }
-        Text {
-            x: 12
-            y: 10
-            text: setting.title
-            color: Glass.ink
-            font.family: Glass.font
-            font.pixelSize: 15
-            font.weight: setting.checked ? Font.DemiBold : Font.Normal
-        }
-        Text {
-            x: 12
-            y: 32
-            width: parent.width - 84
-            text: setting.note
-            color: Glass.mute
-            elide: Text.ElideRight
-            font.family: Glass.font
-            font.pixelSize: 11
-        }
-        LiquidSwitch {
-            anchors.right: parent.right
-            anchors.rightMargin: 12
-            y: 13
-            checked: setting.checked
-            interactive: setting.interactive
-            onToggled: setting.toggled()
-        }
-    }
-
-    component SmallLabel: Text {
-        color: Glass.faint
-        font.family: Glass.font
-        font.pixelSize: 11
-        font.weight: Font.DemiBold
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: 0.8
-    }
-
-    GlassPanel {
+    SettingsPanel {
         id: styleSheet
         z: 9
         source: stage
         x: 12
         y: 56
         width: parent.width - 24
-        readonly property real wantHeight: 52 + (root.settingsTab === "general" ? generalTab.height : Math.min(wrappedFlick.contentHeight, root.height - 56 - 12 - 52 - 8)) + 8
-        height: wantHeight
-        Behavior on height { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-        radius: 22
-        opacity: root.styleOpen ? 1 : 0
-        scale: root.styleOpen ? 1 : 0.9
-        transformOrigin: Item.TopLeft
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 160 } }
-        Behavior on scale { SpringAnimation { spring: Glass.springPanel; damping: Glass.dampingPanel; epsilon: 0.002 } }
-        MouseArea { anchors.fill: parent }
-
-        // two tabs, one sheet
-        Row {
-            x: 16
-            y: 12
-            spacing: 8
-            Chip {
-                label: qsTr("Settings")
-                height: 30
-                strong: root.settingsTab === "general"
-                onClicked: root.settingsTab = "general"
-            }
-            Chip {
-                label: qsTr("Wrapped")
-                height: 30
-                strong: root.settingsTab === "wrapped"
-                onClicked: root.settingsTab = "wrapped"
-            }
-        }
-
-        // ---- Settings tab ----
-        Column {
-            id: generalTab
-            x: 8
-            y: 52
-            width: parent.width - 16
-            opacity: root.settingsTab === "general" ? 1 : 0
-            visible: opacity > 0.01
-            Behavior on opacity { NumberAnimation { duration: 160 } }
-
-            Item {
-                width: parent.width
-                height: animFlow.implicitHeight + 62
-                SmallLabel { x: 12; y: 2; text: qsTr("Animation") }
-                Flow {
-                    id: animFlow
-                    x: 8
-                    y: 24
-                    width: parent.width - 16
-                    spacing: 8
-                    Repeater {
-                        model: root.visualStyles
-                        Chip {
-                            required property var modelData
-                            label: modelData.label
-                            strong: root.visualStyle === modelData.id
-                            onClicked: root.visualStyle = modelData.id
-                        }
-                    }
-                }
-                Text {
-                    x: 12
-                    y: animFlow.y + animFlow.implicitHeight + 8
-                    width: parent.width - 24
-                    text: {
-                        for (const style of root.visualStyles)
-                            if (style.id === root.visualStyle)
-                                return style.hint
-                        return ""
-                    }
-                    color: Glass.mute
-                    elide: Text.ElideRight
-                    font.family: Glass.font
-                    font.pixelSize: 11
-                }
-            }
-            SettingRow {
-                title: qsTr("Play similar songs")
-                note: !backend.similarAvailable ? qsTr("Needs the Grok CLI.")
-                    : backend.similarStatus !== "" ? backend.similarStatus
-                    : qsTr("Keeps up to 10 songs queued, like the one you picked")
-                checked: backend.autoSimilar
-                interactive: backend.similarAvailable
-                onToggled: backend.autoSimilar = !backend.autoSimilar
-            }
-            SettingRow {
-                title: qsTr("Learn what I like")
-                note: backend.useTaste ? backend.tasteSummary : qsTr("Off. Nothing is remembered.")
-                checked: backend.useTaste
-                onToggled: backend.useTaste = !backend.useTaste
-            }
-            SettingRow {
-                title: qsTr("Opening animation")
-                note: backend.introEnabled ? qsTr("The word draws itself as Drift opens") : qsTr("Off. Drift opens straight to your music")
-                checked: backend.introEnabled
-                onToggled: backend.introEnabled = !backend.introEnabled
-            }
-            SettingRow {
-                visible: root.showFollow
-                height: visible ? 58 : 0
-                title: qsTr("Follow me across desktops")
-                note: qsTr("Carries the player along as the mini player")
-                checked: desktop.follow
-                onToggled: desktop.follow = !desktop.follow
-            }
-        }
-
-        // ---- Wrapped tab ----
-        Flickable {
-            id: wrappedFlick
-            x: 8
-            y: 52
-            width: parent.width - 16
-            height: parent.height - 52 - 8
-            contentWidth: width
-            contentHeight: wrapped.height
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            opacity: root.settingsTab === "wrapped" ? 1 : 0
-            visible: opacity > 0.01
-            Behavior on opacity { NumberAnimation { duration: 160 } }
-
-            Column {
-                id: wrapped
-                width: parent.width
-                spacing: 10
-                readonly property var stats: backend.stats
-                readonly property var songs: stats.topSongs
-                readonly property var artists: stats.topArtists
-                readonly property var week: stats.week
-                readonly property real weekMax: {
-                    let top = 1
-                    for (const day of week)
-                        top = Math.max(top, day.seconds)
-                    return top
-                }
-
-                // empty until there is something to say
-                Text {
-                    visible: !wrapped.stats.hasData
-                    width: parent.width
-                    topPadding: 24
-                    bottomPadding: 28
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    text: qsTr("Listen for a while and your Wrapped fills in here: time, favourites and streaks. It stays on this machine.")
-                    color: Glass.mute
-                    font.family: Glass.font
-                    font.pixelSize: 13
-                    leftPadding: 20
-                    rightPadding: 20
-                }
-
-                // the headline
-                Rectangle {
-                    visible: wrapped.stats.hasData
-                    width: parent.width
-                    height: visible ? 92 : 0
-                    radius: 18
-                    gradient: Gradient {
-                        orientation: Gradient.Horizontal
-                        GradientStop { position: 0; color: Qt.rgba(Glass.accent.r, Glass.accent.g, Glass.accent.b, 0.55) }
-                        GradientStop { position: 1; color: Qt.rgba(Glass.accentLight.r, Glass.accentLight.g, Glass.accentLight.b, 0.18) }
-                    }
-                    border.width: 1
-                    border.color: Glass.specular
-                    SmallLabel { x: 16; y: 12; text: qsTr("You have listened for"); color: Glass.mute }
-                    Text {
-                        x: 16
-                        y: 30
-                        text: wrapped.stats.total
-                        color: Glass.ink
-                        font.family: Glass.font
-                        font.pixelSize: 34
-                        font.weight: Font.Bold
-                    }
-                    Text {
-                        x: 16
-                        y: 70
-                        text: qsTr("%1 today").arg(wrapped.stats.today)
-                        color: Glass.mute
-                        font.family: Glass.font
-                        font.pixelSize: 11
-                    }
-                }
-
-                // three small numbers
-                Row {
-                    visible: wrapped.stats.hasData
-                    width: parent.width
-                    height: visible ? 58 : 0
-                    spacing: 8
-                    Repeater {
-                        model: [
-                            { value: String(wrapped.stats.plays), name: qsTr("plays") },
-                            { value: wrapped.stats.streak > 0 ? String(wrapped.stats.streak) : "–", name: qsTr("day streak") },
-                            { value: wrapped.stats.peak !== "" ? wrapped.stats.peak : "–", name: qsTr("you listen most") }
-                        ]
-                        Rectangle {
-                            required property var modelData
-                            width: (wrapped.width - 16) / 3
-                            height: 58
-                            radius: 14
-                            color: Glass.fill
-                            border.width: 1
-                            border.color: Glass.specular
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                y: 9
-                                width: parent.width - 8
-                                horizontalAlignment: Text.AlignHCenter
-                                elide: Text.ElideRight
-                                text: parent.modelData.value
-                                color: Glass.ink
-                                font.family: Glass.font
-                                font.pixelSize: 17
-                                font.weight: Font.DemiBold
-                            }
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                y: 34
-                                text: parent.modelData.name
-                                color: Glass.faint
-                                font.family: Glass.font
-                                font.pixelSize: 10
-                            }
-                        }
-                    }
-                }
-
-                // the last seven days
-                Item {
-                    visible: wrapped.stats.hasData
-                    width: parent.width
-                    height: visible ? 64 : 0
-                    Row {
-                        anchors.fill: parent
-                        anchors.leftMargin: 6
-                        anchors.rightMargin: 6
-                        spacing: 8
-                        Repeater {
-                            model: wrapped.week
-                            Item {
-                                required property var modelData
-                                required property int index
-                                width: (wrapped.width - 12 - 6 * 8) / 7
-                                height: 64
-                                Rectangle {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    width: parent.width
-                                    height: Math.max(4, 42 * parent.modelData.seconds / wrapped.weekMax)
-                                    y: 44 - height
-                                    radius: 5
-                                    color: parent.index === 6 ? Glass.accentLight : Glass.rail
-                                    Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                                }
-                                Text {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    y: 49
-                                    text: parent.modelData.day
-                                    color: Glass.faint
-                                    font.family: Glass.font
-                                    font.pixelSize: 10
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // favourites
-                SmallLabel { visible: wrapped.stats.hasData && wrapped.songs.length > 0; leftPadding: 6; text: qsTr("Most played") }
-                Repeater {
-                    model: wrapped.stats.hasData ? wrapped.songs.slice(0, 3) : []
-                    Item {
-                        id: songRow
-                        required property var modelData
-                        required property int index
-                        width: wrapped.width
-                        height: 44
-                        Rectangle {
-                            id: cover
-                            x: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 38
-                            height: 38
-                            radius: 8
-                            color: songRow.index === 0 ? Qt.rgba(Glass.accent.r, Glass.accent.g, Glass.accent.b, 0.5) : Glass.fill
-                            clip: true
-                            Image {
-                                id: coverImage
-                                anchors.fill: parent
-                                source: songRow.modelData.artwork || ""
-                                visible: status === Image.Ready
-                                fillMode: Image.PreserveAspectCrop
-                            }
-                            Text {
-                                anchors.centerIn: parent
-                                text: String(songRow.index + 1)
-                                visible: !coverImage.visible
-                                color: Glass.ink
-                                font.family: Glass.font
-                                font.pixelSize: 15
-                                font.weight: Font.Bold
-                            }
-                        }
-                        Column {
-                            x: 54
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - 54 - 70
-                            Text {
-                                width: parent.width
-                                text: songRow.modelData.title
-                                elide: Text.ElideRight
-                                color: Glass.ink
-                                font.family: Glass.font
-                                font.pixelSize: 13
-                                font.weight: Font.DemiBold
-                            }
-                            Text {
-                                width: parent.width
-                                text: songRow.modelData.artist
-                                elide: Text.ElideRight
-                                color: Glass.mute
-                                font.family: Glass.font
-                                font.pixelSize: 11
-                            }
-                        }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: songRow.modelData.time
-                            color: Glass.faint
-                            font.family: Glass.font
-                            font.pixelSize: 11
-                        }
-                    }
-                }
-                SmallLabel { visible: wrapped.stats.hasData && wrapped.artists.length > 0; leftPadding: 6; text: qsTr("Top artists") }
-                Flow {
-                    visible: wrapped.stats.hasData
-                    width: parent.width
-                    spacing: 6
-                    Repeater {
-                        model: wrapped.stats.hasData ? wrapped.artists.slice(0, 3) : []
-                        Chip {
-                            required property var modelData
-                            height: 28
-                            pad: 12
-                            label: modelData.name
-                        }
-                    }
-                }
-                Chip {
-                    visible: wrapped.stats.hasData
-                    height: 26
-                    pad: 12
-                    dimmed: true
-                    label: qsTr("Reset my stats")
-                    onClicked: backend.forgetStats()
-                }
-                Item { width: 1; height: 4 }
-            }
-        }
+        open: root.styleOpen
+        tab: root.settingsTab
+        onTabChanged: root.settingsTab = tab
+        visualStyle: root.visualStyle
+        visualStyles: root.visualStyles
+        showFollow: root.showFollow
+        maxHeight: root.height - 56 - 12
+        onStyleChosen: function (id) { root.visualStyle = id }
     }
 
     // ================= LYRICS =================
     // The one writer of wantLyrics: the sheet, or the full-screen view.
-    Binding { target: backend; property: "wantLyrics"; value: root.lyricsOpen || (root.window !== null && root.window.cinema) }
+    Binding { target: backend; property: "wantLyrics"; value: root.lyricsOpen || (root.window !== null && root.window.cinema && root.window.cinemaLyrics) }
     Rectangle {
         anchors.fill: parent
         z: 8
@@ -2239,7 +1880,7 @@ Item {
     Rectangle {
         id: toast
         anchors.horizontalCenter: parent.horizontalCenter
-        y: parent.height - (root.mini ? 46 : 120)
+        y: parent.height - (root.mini ? 84 : 120)
         z: 10
         height: 38
         width: toastText.implicitWidth + 36

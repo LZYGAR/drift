@@ -18,3 +18,8 @@ FullScreenLyricsView 1.0 FullScreenLyricsView.qml
 LiquidField 1.0 LiquidField.qml
 DriftMark 1.0 DriftMark.qml
 Intro 1.0 Intro.qml
+Chip 1.0 Chip.qml
+SettingsPanel 1.0 SettingsPanel.qml
+SearchPanel 1.0 SearchPanel.qml
+LiquidGlass 1.0 LiquidGlass.qml
+MiniMenu 1.0 MiniMenu.qml

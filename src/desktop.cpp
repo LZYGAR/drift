@@ -11,7 +11,7 @@ namespace {
 constexpr int kMargin = 14;
 // The two sizes of the window (MainWindow.qml's miniHeight and fullHeight, and its fixed width).
 constexpr int kWidth = 360;
-constexpr int kMiniHeight = 96;
+constexpr int kMiniHeight = 144;
 constexpr int kFullHeight = 640;
 } // namespace
 
@@ -112,16 +112,26 @@ QPair<int, int> Desktop::topLeft(const QJsonObject &monitor, int margin) {
             monitor.value(QStringLiteral("y")).toInt() + reserved.at(1).toInt() + margin};
 }
 
+QPair<int, int> Desktop::clampInside(const QJsonObject &monitor, int x, int y, int width, int height) {
+    const QJsonArray reserved = monitor.value(QStringLiteral("reserved")).toArray(); // left, top, right, bottom
+    const double scale = qMax(0.1, monitor.value(QStringLiteral("scale")).toDouble(1.0));
+    const int left = monitor.value(QStringLiteral("x")).toInt() + reserved.at(0).toInt();
+    const int top = monitor.value(QStringLiteral("y")).toInt() + reserved.at(1).toInt();
+    const int right = monitor.value(QStringLiteral("x")).toInt() + int(monitor.value(QStringLiteral("width")).toDouble() / scale) - reserved.at(2).toInt();
+    const int bottom = monitor.value(QStringLiteral("y")).toInt() + int(monitor.value(QStringLiteral("height")).toDouble() / scale) - reserved.at(3).toInt();
+    return {qBound(left, x, qMax(left, right - width)), qBound(top, y, qMax(top, bottom - height))};
+}
+
 QPair<int, int> Desktop::parkSpot(const QJsonObject &monitor, int margin, bool remembered, int offsetX, int offsetY) {
     const auto corner = topLeft(monitor, 0);
     if (!remembered)
         return {corner.first + margin, corner.second + margin};
-    // The mini player is about 360 by 96; keep it fully on this monitor.
+    // The mini player is about 360 by 144; keep it fully on this monitor.
     const double scale = qMax(0.1, monitor.value(QStringLiteral("scale")).toDouble(1.0));
     const int width = int(monitor.value(QStringLiteral("width")).toDouble() / scale);
     const int height = int(monitor.value(QStringLiteral("height")).toDouble() / scale);
     const int maxX = monitor.value(QStringLiteral("x")).toInt() + qMax(0, width - 360);
-    const int maxY = monitor.value(QStringLiteral("y")).toInt() + qMax(0, height - 96);
+    const int maxY = monitor.value(QStringLiteral("y")).toInt() + qMax(0, height - 144);
     return {qBound(corner.first, corner.first + offsetX, qMax(corner.first, maxX)),
             qBound(corner.second, corner.second + offsetY, qMax(corner.second, maxY))};
 }
@@ -190,6 +200,68 @@ void Desktop::runHyprctl(const QStringList &args, std::function<void(const QByte
 
 void Desktop::dispatch(const QString &lua) {
     runHyprctl({QStringLiteral("dispatch"), lua});
+}
+
+void Desktop::withOwnClient(std::function<void(const QJsonObject &)> done) {
+    if (!m_available)
+        return;
+    runHyprctl({QStringLiteral("-j"), QStringLiteral("clients")}, [done](const QByteArray &out) {
+        const qint64 pid = QCoreApplication::applicationPid();
+        for (const auto &value : QJsonDocument::fromJson(out).array()) {
+            const QJsonObject client = value.toObject();
+            if (client.value(QStringLiteral("pid")).toInteger() == pid && client.value(QStringLiteral("mapped")).toBool(true)) {
+                done(client);
+                return;
+            }
+        }
+    });
+}
+
+void Desktop::rememberPlace() {
+    withOwnClient([this](const QJsonObject &mine) {
+        const QJsonArray at = mine.value(QStringLiteral("at")).toArray();
+        m_peekX = at.at(0).toInt();
+        m_peekY = at.at(1).toInt();
+        m_hasPeek = true;
+    });
+}
+
+// The window is changing size and Hyprland may move it while it does: look a few times, and each time pull it back
+// inside the screen if it has strayed.
+void Desktop::keepOnScreen() {
+    keepOnScreenStep(0);
+}
+
+void Desktop::keepOnScreenStep(int attempt) {
+    if (!m_available || attempt > 8)
+        return;
+    withOwnClient([this, attempt](const QJsonObject &mine) {
+        const QString address = mine.value(QStringLiteral("address")).toString();
+        const int monitorId = mine.value(QStringLiteral("monitor")).toInt(-1);
+        const QJsonArray at = mine.value(QStringLiteral("at")).toArray();
+        const QJsonArray size = mine.value(QStringLiteral("size")).toArray();
+        runHyprctl({QStringLiteral("-j"), QStringLiteral("monitors")}, [=](const QByteArray &out) {
+            QJsonObject monitor;
+            for (const auto &value : QJsonDocument::fromJson(out).array())
+                if (value.toObject().value(QStringLiteral("id")).toInt() == monitorId)
+                    monitor = value.toObject();
+            if (!monitor.isEmpty()) {
+                const auto fit = clampInside(monitor, at.at(0).toInt(), at.at(1).toInt(), size.at(0).toInt(), size.at(1).toInt());
+                if (fit.first != at.at(0).toInt() || fit.second != at.at(1).toInt())
+                    dispatch(moveCommand(address, fit.first, fit.second));
+            }
+            QTimer::singleShot(120, this, [this, attempt] { keepOnScreenStep(attempt + 1); });
+        });
+    });
+}
+
+// Small again: back to the spot it was in before it stepped up.
+void Desktop::restorePlace() {
+    if (!m_hasPeek)
+        return;
+    withOwnClient([this](const QJsonObject &mine) {
+        placeWhenSized(mine.value(QStringLiteral("address")).toString(), 1, m_peekX, m_peekY);
+    });
 }
 
 // Looks at where this window is now, and decides.

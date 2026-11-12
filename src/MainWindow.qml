@@ -13,6 +13,8 @@ ApplicationWindow {
     property bool mini: false
     // Cinema: borderless full screen with the big cover and the lyrics (FullScreenLyricsView.qml).
     property bool cinema: false
+    // In full screen: the synced words next to the cover. Off, the cover and the moving background have the room.
+    property bool cinemaLyrics: true
     function setCinema(on) {
         if (on === cinema)
             return
@@ -30,7 +32,7 @@ ApplicationWindow {
         }
     }
     readonly property int fullHeight: 640
-    readonly property int miniHeight: 96
+    readonly property int miniHeight: 144
     // 0 is the full player, 1 the mini player. The window morphs between the
     // two on a spring that is damped enough not to wobble the window frame.
     property real morph: mini ? 1 : 0
@@ -53,7 +55,7 @@ ApplicationWindow {
     maximumWidth: cinema ? 16777215 : 360
     maximumHeight: cinema ? 16777215 : shownHeight
     // With the opening off, a signed-in app stays hidden until it can show the main page, never the login screen.
-    visible: backend.preview || backend.introEnabled || backend.sessionKnown
+    visible: backend.preview || backend.introEnabled || backend.settled
     title: "Drift"
     color: Glass.base
     flags: Qt.Window | Qt.FramelessWindowHint | (staysOnTop ? Qt.WindowStaysOnTopHint : 0)
@@ -64,7 +66,7 @@ ApplicationWindow {
 
     property bool helpVisible: false
     // Text fields own the keyboard on these screens, so single-letter shortcuts stand down.
-    readonly property bool typing: backend.kind === "search" || backend.kind === "mix" || player.paletteOpen || player.plusTyping
+    readonly property bool typing: (win.cinema && cinemaView.typing) || backend.kind === "search" || backend.kind === "mix" || player.paletteOpen || player.plusTyping
     // The palette's own field handles the arrows and Enter while it is open; so does the + menu's new-playlist field.
     readonly property bool listKeys: !backend.signingIn && !player.paletteOpen && !player.plusOpen
     property bool faceOpened: false
@@ -130,6 +132,7 @@ ApplicationWindow {
         }
     }
 
+    onCinemaLyricsChanged: { if (positionReady && !backend.preview) { windowSettings.cinemaLyrics = cinemaLyrics; windowSettings.sync() } }
     onXChanged: rememberPosition()
     onYChanged: rememberPosition()
     onStaysOnTopChanged: rememberStaysOnTop()
@@ -146,13 +149,22 @@ ApplicationWindow {
         property int windowY: 0
         property bool havePosition: false
         property string visualStyle: "liquid"
+        property bool cinemaLyrics: true
 
         Component.onCompleted: {
             // Children complete before the window is shown, so this lands before the first frame.
             win.staysOnTop = staysOnTop
+            win.cinemaLyrics = cinemaLyrics
             win.mini = backend.previewMini || mini
             // CLICK_PREVIEW_PANEL=cinema shows the full-screen view (a screenshot cannot go real full screen).
-            if (backend.previewPanel === "cinema") { win.cinema = true; win.width = 1280; win.height = 720 }
+            // cinema-off: the same without the words. cinema-sound: with the Sound panel open on its card.
+            // cinema-off: without the words. cinema-sound, cinema-search, cinema-plus, cinema-settings: with that menu open.
+            if (backend.previewPanel.indexOf("cinema") === 0) {
+                win.cinema = true; win.width = 1280; win.height = 720
+                if (backend.previewPanel === "cinema-off") win.cinemaLyrics = false
+                const menuName = backend.previewPanel.slice(7)
+                if (["sound", "search", "plus", "settings"].indexOf(menuName) >= 0) cinemaView.menu = menuName
+            }
             if (!backend.preview) player.visualStyle = visualStyle
             win.restorePosition()
             win.positionReady = true
@@ -202,7 +214,8 @@ ApplicationWindow {
         context: Qt.ApplicationShortcut
         // Closes whatever is on top first: cinema, the palette, then Sound, then one screen back.
         onActivated: {
-            if (win.cinema) win.setCinema(false)
+            if (win.cinema && cinemaView.menu !== "") cinemaView.closeMenu()
+            else if (win.cinema) win.setCinema(false)
             else if (player.paletteOpen) player.paletteOpen = false
             else if (player.lyricsOpen) player.lyricsOpen = false
             else if (player.plusOpen) player.plusOpen = false
@@ -217,6 +230,7 @@ ApplicationWindow {
         enabled: !backend.signingIn && backend.signedIn
         context: Qt.ApplicationShortcut
         onActivated: {
+            if (win.cinema) { cinemaView.toggleMenu("search"); return }
             if (win.mini) win.mini = false
             player.soundOpen = false
             player.styleOpen = false
@@ -486,7 +500,7 @@ ApplicationWindow {
         active: backend.introEnabled && !win.mini && (!backend.preview || backend.previewPanel === "intro" || backend.previewPanel === "intro-out")
         signedIn: backend.signedIn
         busy: backend.signingIn
-        known: backend.sessionKnown
+        known: backend.settled
         still: backend.previewPanel === "intro" ? 0.78 : backend.previewPanel === "intro-out" ? 1 : -1
         welcomeY: 70
         welcomeWidth: 220
@@ -497,7 +511,11 @@ ApplicationWindow {
         id: cinemaView
         z: 3
         active: win.cinema
+        lyricsOn: win.cinemaLyrics
         onExitRequested: win.setCinema(false)
+        onToggleLyrics: win.cinemaLyrics = !win.cinemaLyrics
+        onHeartRequested: player.toggleHeart()
+        player: player
     }
 
     Column {
@@ -513,7 +531,7 @@ ApplicationWindow {
             text: qsTr("Finish sign-in in Apple's window. Esc cancels.")
             color: "#d0d0d4"
             elide: Text.ElideRight
-            font.family: "Inter"
+            font.family: Glass.font
             font.pixelSize: 13
         }
         Text {
@@ -522,7 +540,7 @@ ApplicationWindow {
             text: win.authHost
             color: "#8e8e94"
             elide: Text.ElideRight
-            font.family: "Inter"
+            font.family: Glass.font
             font.pixelSize: 11
         }
         Text {
@@ -531,7 +549,7 @@ ApplicationWindow {
             text: backend.status
             color: "#d7c4a1"
             elide: Text.ElideRight
-            font.family: "Inter"
+            font.family: Glass.font
             font.pixelSize: 12
         }
     }
@@ -547,23 +565,23 @@ ApplicationWindow {
             anchors.centerIn: parent
             spacing: 8
             Text { text: "Drift"; color: "white"; font.family: "Inter"; font.pixelSize: 22; font.weight: Font.Bold }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Scroll or ↑ ↓   move") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Click or Enter   choose") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Esc   back") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Space   play or pause") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("← →   previous or next") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("− =   volume") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("A   add to Up Next") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("N   play next") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("U   Up Next") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("M   make a mix with Grok") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Ctrl+K   run any command") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("?   shortcuts") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("H   heart the song") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("T   always on top") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Ctrl+M   mini player") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("F11   full screen with lyrics") }
-            Text { color: "#d7d7dc"; font.family: "Inter"; font.pixelSize: 14; text: qsTr("Q   quit") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("Scroll or ↑ ↓   move") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("Click or Enter   choose") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("Esc   back") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("Space   play or pause") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("← →   previous or next") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("− =   volume") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("A   add to Up Next") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("N   play next") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("U   Up Next") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("M   make a mix with Grok") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("Ctrl+K   run any command") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("?   shortcuts") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("H   heart the song") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("T   always on top") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("Ctrl+M   mini player") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("F11   full screen with lyrics") }
+            Text { color: "#d7d7dc"; font.family: Glass.font; font.pixelSize: 14; text: qsTr("Q   quit") }
         }
     }
 }

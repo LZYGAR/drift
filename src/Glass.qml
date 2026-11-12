@@ -7,11 +7,15 @@ QtObject {
     id: glass
 
     // ---- text and surfaces (neutral white on black) ----
-    readonly property color ink: "#f5f5f7"          // primary text and icons
-    readonly property color mute: "#a6f2f2f5"       // secondary text, 65%
-    readonly property color faint: "#5cf2f2f5"      // hints and times, 36%
-    readonly property color inkText: "#0c0c0d"      // text on an ink-filled button
-    readonly property color base: "#0b0b0c"         // behind everything
+    // "Follow Omarchy theme" (Settings): the palette comes from the active theme's colors.toml.
+    // A light theme keeps the dark glass (the glass needs a dark base to read), so only dark themes recolour the text and base.
+    readonly property bool followTheme: backend.themeFollow && !theme.light
+    function withAlpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
+    readonly property color ink: followTheme ? theme.foreground : "#f5f5f7"          // primary text and icons
+    readonly property color mute: followTheme ? withAlpha(Qt.color(theme.foreground), 0.65) : "#a6f2f2f5"       // secondary text, 65%
+    readonly property color faint: followTheme ? withAlpha(Qt.color(theme.foreground), 0.36) : "#5cf2f2f5"      // hints and times, 36%
+    readonly property color inkText: followTheme ? theme.background : "#0c0c0d"      // text on an ink-filled button
+    readonly property color base: followTheme ? theme.background : "#0b0b0c"         // behind everything
     readonly property color fill: "#1fffffff"       // glass fill at rest, 12%
     readonly property color fillHover: "#33ffffff"  // glass fill under the pointer, 20%
     readonly property color rail: "#38ffffff"       // unplayed waveform and slider rails, 22%
@@ -24,7 +28,8 @@ QtObject {
     readonly property color rimMiddle: "#1affffff"
     readonly property color rimDim: "#0affffff"
     readonly property color scrim: "#8c000000"      // behind sheets and the palette, 55%
-    readonly property string font: "Inter"
+    // "Use Omarchy font" (Settings) swaps Inter for the font Omarchy has set, if this machine has it.
+    readonly property string font: backend.fontFollow && theme.fontFamily !== "" ? theme.fontFamily : "Inter"
 
     // ---- glass ----
     readonly property int panelBlur: 48             // blur radius behind panels, px
@@ -92,15 +97,22 @@ QtObject {
     // ---- colour that follows the cover ----
     readonly property color themeAccent: theme.accent
     // With nothing playing the app is black and white; a song brings its cover's colours in.
-    property color accent: backend.hasArtColor ? backend.artColor : "#a9a9b0"
-    property color secondary: backend.hasArtColor ? backend.artSecondary : "#45454a"
-    property color ambient: backend.hasArtColor ? backend.artAmbient : "#0e0e10"
+    // Following the theme: the idle look is the theme's, and a song's colours are pulled 25% toward it so the cover still leads.
+    readonly property real themePull: followTheme ? 0.25 : 0
+    property color accent: backend.hasArtColor ? mix(backend.artColor, theme.accent, themePull)
+                         : followTheme ? theme.accent : "#a9a9b0"
+    property color secondary: backend.hasArtColor ? mix(backend.artSecondary, theme.selection, themePull)
+                            : followTheme ? theme.selection : "#45454a"
+    property color ambient: backend.hasArtColor ? mix(backend.artAmbient, theme.background, themePull)
+                          : followTheme ? theme.background : "#0e0e10"
     Behavior on accent { ColorAnimation { duration: glass.colorShift; easing.type: Easing.InOutSine } }
     Behavior on secondary { ColorAnimation { duration: glass.colorShift; easing.type: Easing.InOutSine } }
     Behavior on ambient { ColorAnimation { duration: glass.colorShift; easing.type: Easing.InOutSine } }
     readonly property color accentLight: Qt.lighter(accent, 1.25)
 
     function mix(a, b, t) {
+        // Colours often arrive as strings ("#rrggbb"); read them as colours first or the channels are undefined.
+        a = Qt.color(a); b = Qt.color(b)
         return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t)
     }
 

@@ -196,7 +196,13 @@ test("only the person's own playlists are offered, never Apple's, and a song can
     calls.push([path, opts && opts.fetchOptions && opts.fetchOptions.method, opts && opts.fetchOptions && opts.fetchOptions.body]);
     return Promise.resolve({ data: { data: /library\/playlists$/.test(path) && !opts ? lib : [] } });
   } } } });
-  global.fetch = (url) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ data: /library\/playlists/.test(url) ? lib : [] }) });
+  global.fetch = (url, opts) => {
+    if (opts && opts.method && opts.method !== "GET") {
+      calls.push([url.replace("https://amp-api.music.apple.com", "").split("?")[0], opts.method, opts.body]);
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve("{}") });
+    }
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ data: /library\/playlists/.test(url) ? lib : [] }) });
+  };
   exec("libraryplaylists", "", "", 0);
   await settle();
   const list = published.find((p) => p.type === "playlists");
@@ -228,12 +234,20 @@ test("the library's Playlists screen lists every playlist but marks only the per
 
 test("love and unlove use the library or catalog rating endpoint to match the song", async () => {
   const seen = [];
-  const { published, exec } = setup({ music: { api: { music: (p, q, o) => { seen.push([p, o && o.fetchOptions && o.fetchOptions.method]); return Promise.resolve({ data: { data: [] } }); } } } });
+  let kitCalls = 0;
+  const { published, exec } = setup({ music: { developerToken: "dev", musicUserToken: "user",
+    api: { music: () => { kitCalls++; return Promise.reject(new Error("must not be used")); } } } });
+  global.fetch = (url, opts) => {
+    seen.push([url.replace("https://amp-api.music.apple.com", "").split("?")[0], opts.method]);
+    return Promise.resolve({ ok: true, status: 204, text: () => Promise.resolve("") });
+  };
   exec("love", "1234", "", 0);
   exec("unlove", "i.9", "", 0);
   await settle();
   assert.deepStrictEqual(seen, [["/v1/me/ratings/songs/1234", "PUT"], ["/v1/me/ratings/library-songs/i.9", "DELETE"]]);
   assert.ok(published.some((p) => p.type === "rating" && p.id === "1234" && p.loved === true));
+  assert.strictEqual(kitCalls, 0, "likes must not go through MusicKit's api (a refusal there can sign people out)");
+  delete global.fetch;
 });
 
 test("lyrics go through a plain fetch with the page's tokens, never MusicKit's api (which can sign people out)", async () => {

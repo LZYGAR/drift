@@ -17,6 +17,7 @@ layout(std140, binding = 0) uniform buf {
     float progress;  // 0 to 1, how much of the word is drawn
     float glow;      // halo strength
     vec2 size;       // in pixels
+    vec4 tint;       // the glass colour (white unless following the Omarchy theme)
 } u;
 layout(binding = 1) uniform sampler2D sharp;
 layout(binding = 2) uniform sampler2D soft;
@@ -94,12 +95,12 @@ void main() {
     float sweep = exp(-pow((uv.x + uv.y * 0.25 - sweepAt) / 0.06, 2.0)) * 0.45;
 
     float lum = clamp(body + spec * 0.9 + rimLight * 0.55 - rimShade * 0.38 + sweep, 0.0, 1.0);
-    vec3 col = lum * vec3(0.975, 0.985, 1.0);
+    vec3 col = lum * u.tint.rgb;
 
     // A soft light around the glass.
     float halo = s * 0.42 * u.glow * (1.0 - inside);
 
-    vec3 rgb = col * inside + vec3(halo);
+    vec3 rgb = col * inside + u.tint.rgb * halo;
     float alpha = clamp(inside + halo * (1.0 - inside), 0.0, 1.0);
     fragColor = vec4(rgb, alpha) * u.qt_Opacity;
 }

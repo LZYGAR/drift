@@ -40,10 +40,14 @@ class Backend : public QObject {
     // True once Apple Music's page has said whether you are signed in (or after a while, so a page that never loads
     // does not keep the window hidden or the opening waiting for ever).
     Q_PROPERTY(bool sessionKnown READ sessionKnown NOTIFY sessionChanged)
+    Q_PROPERTY(bool settled READ settled NOTIFY sessionChanged)
     Q_PROPERTY(bool introEnabled READ introEnabled WRITE setIntroEnabled NOTIFY introChanged)
+    Q_PROPERTY(bool fontFollow READ fontFollow WRITE setFontFollow NOTIFY fontFollowChanged)
+    Q_PROPERTY(bool themeFollow READ themeFollow WRITE setThemeFollow NOTIFY themeFollowChanged)
     Q_PROPERTY(QString status READ status NOTIFY sessionChanged)
     Q_PROPERTY(QString title READ title NOTIFY screenChanged)
     Q_PROPERTY(QString kind READ kind NOTIFY screenChanged)
+    Q_PROPERTY(bool atRoot READ atRoot NOTIFY screenChanged)
     Q_PROPERTY(QVariantList rows READ rows NOTIFY screenChanged)
     Q_PROPERTY(int selected READ selected NOTIFY screenChanged)
     Q_PROPERTY(bool playing READ playing NOTIFY playbackChanged)
@@ -106,9 +110,16 @@ public:
     bool previewMini() const { return m_preview && qEnvironmentVariableIsSet("CLICK_PREVIEW_MINI"); }
     bool signingIn() const { return m_signingIn; }
     bool signedIn() const { return m_signedIn; }
+    bool atRoot() const { return m_stack.size() <= 1; }
     bool sessionKnown() const { return m_sessionKnown; }
+    // Signed in or out is known, and a saved song has finished coming back (so the first screen is the final one).
+    bool settled() const { return m_sessionKnown && !m_restorePending; }
     bool introEnabled() const { return m_introEnabled; }
     void setIntroEnabled(bool on);
+    bool fontFollow() const { return m_fontFollow; }
+    void setFontFollow(bool on);
+    bool themeFollow() const { return m_themeFollow; }
+    void setThemeFollow(bool on);
     QString status() const { return m_status; }
     QString title() const;
     QString kind() const;
@@ -252,6 +263,8 @@ signals:
     void similarChanged();
     void historyChanged();
     void introChanged();
+    void themeFollowChanged();
+    void fontFollowChanged();
     void tasteChanged();
     void artColorChanged();
 
@@ -360,7 +373,10 @@ private:
     Stats *m_stats = nullptr;
     QStringList m_history;
     bool m_sessionKnown = false;
+    bool m_restorePending = false;
     bool m_introEnabled = true;
+    bool m_themeFollow = false;
+    bool m_fontFollow = false;
     void markSessionKnown();
     QTimer m_historyTimer;
     QString m_historyPending;

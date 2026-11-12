@@ -40,6 +40,8 @@ Item {
     property real molten: 1
 
     property bool active: true
+    // Follow Omarchy theme (Settings). Light themes keep the dark intro.
+    readonly property bool themed: backend.themeFollow && !theme.light
     visible: active && (leave < 1 || still >= 0)
     enabled: visible
     // Swallows clicks while it plays.
@@ -48,22 +50,23 @@ Item {
     Rectangle {
         id: veil
         anchors.fill: parent
-        color: "#050506"
+        color: intro.themed ? Qt.darker(theme.background, 1.5) : "#050506"
         opacity: 1 - intro.leave
     }
     // a soft vignette of colour behind the word
     LiquidField {
         anchors.fill: parent
         running: intro.visible
-        primary: "#ffffff"
-        secondary: "#8d8d95"
-        ambient: "#050506"
+        primary: intro.themed ? theme.accent : "#ffffff"
+        secondary: intro.themed ? Qt.lighter(theme.selection, 1.6) : "#8d8d95"
+        ambient: intro.themed ? Qt.darker(theme.background, 1.5) : "#050506"
         opacity: 0.85 * (intro.goingHome ? 1 - intro.leave : (1 - intro.leave)) * Math.min(1, intro.drawn * 1.5)
     }
 
     DriftMark {
         id: word
         running: intro.visible
+        tint: intro.themed ? Glass.mix(Qt.color("white"), Qt.color(theme.accent), 0.6) : Qt.rgba(0.975, 0.985, 1, 1)
         progress: intro.still >= 0 ? intro.still : intro.drawn
         readonly property real bigWidth: Math.min(intro.width - 60, 300)
         markWidth: bigWidth + (intro.welcomeWidth - bigWidth) * (intro.goingHome ? intro.leave : 0)
@@ -80,7 +83,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         y: word.y + word.height + 18
         text: intro.busy ? qsTr("Signing in…") : intro.line
-        color: "#a8a8b0"
+        color: intro.themed ? Glass.mix(Qt.color(theme.foreground), Qt.color(theme.background), 0.3) : "#a8a8b0"
         font.family: Glass.font
         font.pixelSize: 14
         font.letterSpacing: 3

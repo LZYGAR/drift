@@ -116,7 +116,10 @@ GlassPanel {
             : qsTr("Off. Drag to turn on.")
         color: Glass.faint
         font.family: Glass.font
-        font.pixelSize: 12
+        font.pixelSize: 11
+        // Two lines, so the whole sentence can be read next to the Simple | Advanced switch.
+        wrapMode: Text.WordWrap
+        maximumLineCount: 2
         elide: Text.ElideRight
     }
 

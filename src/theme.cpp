@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -44,14 +45,43 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
     connect(&m_roundingPoll, &QTimer::timeout, this, &Theme::refreshRounding);
     if (!m_hyprctl.isEmpty())
         m_roundingPoll.start();
+    // The font is not in the theme folder: Omarchy sets it through fontconfig. Ask it, and
+    // re-ask when that file changes (omarchy-font-set rewrites it).
+    connect(&m_fontProcess, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
+        const QString family = code == 0 && status == QProcess::NormalExit
+            ? QString::fromUtf8(m_fontProcess.readAllStandardOutput()).trimmed() : QString();
+        // Only a font this machine really has; otherwise stay empty and the app keeps its own.
+        const QString use = !family.isEmpty() && QFontDatabase::families().contains(family) ? family : QString();
+        if (use != m_fontFamily) {
+            m_fontFamily = use;
+            emit changed();
+        }
+    });
+    if (directory.isEmpty()) {
+        const QString fontconfig = QDir::homePath() + "/.config/fontconfig";
+        for (const auto &path : {fontconfig, fontconfig + "/fonts.conf"})
+            if (QFileInfo::exists(path))
+                m_watcher.addPath(path);
+    }
     reload();
 }
 
 Theme::~Theme() {
+    if (m_fontProcess.state() != QProcess::NotRunning) {
+        m_fontProcess.kill();
+        m_fontProcess.waitForFinished(500);
+    }
     if (m_roundingProcess.state() != QProcess::NotRunning) {
         m_roundingProcess.kill();
         m_roundingProcess.waitForFinished(1000);
     }
+}
+
+void Theme::refreshFont() {
+    const auto exe = QStandardPaths::findExecutable("omarchy-font-current");
+    if (exe.isEmpty() || m_fontProcess.state() != QProcess::NotRunning)
+        return;
+    m_fontProcess.start(exe, {});
 }
 
 void Theme::refreshRounding() {
@@ -59,6 +89,18 @@ void Theme::refreshRounding() {
         return;
     m_roundingProcess.start(m_hyprctl, {"-j", "getoption", "decoration:rounding"});
     m_roundingTimeout.start();
+}
+
+QString Theme::readColor(const QString &path, const QString &key, const QString &fallback) {
+    QFile file(path);
+    if (file.open(QIODevice::ReadOnly)) {
+        const QRegularExpression expression(QStringLiteral(R"re(^\s*%1\s*=\s*["'](#[0-9a-fA-F]{6})["'])re").arg(key),
+                                            QRegularExpression::MultilineOption);
+        const auto match = expression.match(QString::fromUtf8(file.readAll()));
+        if (match.hasMatch())
+            return match.captured(1);
+    }
+    return fallback;
 }
 
 QString Theme::readAccent(const QString &path) {
@@ -83,6 +125,8 @@ QString Theme::accentForeground() const {
 
 void Theme::reload() {
     refreshRounding();
+    if (m_directory == QDir::homePath() + "/.local/state/omarchy/current")
+        refreshFont();
     const auto paths = m_watcher.files() + m_watcher.directories();
     if (!paths.isEmpty())
         m_watcher.removePaths(paths);
@@ -96,13 +140,28 @@ void Theme::reload() {
     QStringList candidates{ancestor, QFileInfo(ancestor).absolutePath(), m_directory,
                            m_directory + "/theme", m_directory + "/theme/colors.toml"};
     candidates.removeDuplicates();
+    const QString fontconfig = QDir::homePath() + "/.config/fontconfig";
+    if (m_directory == QDir::homePath() + "/.local/state/omarchy/current")
+        candidates << fontconfig << fontconfig + "/fonts.conf";
     for (const auto &path : candidates)
         if (QFileInfo::exists(path))
             m_watcher.addPath(path);
 
-    const auto accent = readAccent(m_directory + "/theme/colors.toml");
-    if (accent != m_accent) {
+    const auto file = m_directory + "/theme/colors.toml";
+    const auto accent = readAccent(file);
+    const auto background = readColor(file, "background", "#0b0b0c");
+    const auto foreground = readColor(file, "foreground", "#f5f5f7");
+    const auto muted = readColor(file, "muted", "#8a8a90");
+    const auto selection = readColor(file, "selection", "#2a2a2e");
+    const bool light = QColor(background).lightnessF() > 0.6;
+    if (accent != m_accent || background != m_background || foreground != m_foreground || muted != m_muted
+        || selection != m_selection || light != m_light) {
         m_accent = accent;
+        m_background = background;
+        m_foreground = foreground;
+        m_muted = muted;
+        m_selection = selection;
+        m_light = light;
         emit changed();
     }
 }

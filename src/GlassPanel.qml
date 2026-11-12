@@ -31,8 +31,10 @@ Item {
     // A faint glow of the accent colour in the top-left corner, like light from the cover.
     property bool lightSpill: true
     default property alias content: inner.data
+    // Bare: no glass of its own, only the content. For panels that sit on another glass (LiquidGlass).
+    property bool bare: false
 
-    readonly property bool frosted: source !== null && visible && width > 0 && height > 0
+    readonly property bool frosted: !bare && source !== null && visible && width > 0 && height > 0
 
     // ---- shadow ----
     Item {
@@ -42,7 +44,7 @@ Item {
         Rectangle { anchors.fill: parent; radius: panel.radius; color: "black" }
     }
     MultiEffect {
-        visible: panel.shadow
+        visible: panel.shadow && !panel.bare
         anchors.fill: shadowShape
         source: shadowShape
         shadowEnabled: true
@@ -89,24 +91,26 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: panel.radius
-        visible: !panel.frosted
+        visible: !panel.frosted && !panel.bare
         color: Glass.base
     }
 
     // ---- shade, milk, light spill, gloss ----
     Rectangle {
         anchors.fill: parent
+        visible: !panel.bare
         radius: panel.radius
         color: panel.shade
     }
     Rectangle {
         anchors.fill: parent
+        visible: !panel.bare
         radius: panel.radius
         color: Glass.glassMilk
     }
     Shape {
         anchors.fill: parent
-        visible: panel.lightSpill
+        visible: panel.lightSpill && !panel.bare
         layer.enabled: visible
         layer.effect: MultiEffect { maskEnabled: true; maskSource: shape }
         ShapePath {
@@ -127,6 +131,7 @@ Item {
     }
     Rectangle {
         anchors.fill: parent
+        visible: !panel.bare
         radius: panel.radius
         gradient: Gradient {
             GradientStop { position: 0; color: Glass.sheen }
@@ -150,7 +155,8 @@ Item {
     }
     Shape {
         anchors.fill: parent
-        layer.enabled: true
+        visible: !panel.bare
+        layer.enabled: visible
         layer.effect: MultiEffect { maskEnabled: true; maskSource: rimRing }
         ShapePath {
             strokeColor: "transparent"
